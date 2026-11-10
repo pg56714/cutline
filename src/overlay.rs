@@ -662,7 +662,7 @@ impl Overlay {
                     let [r, g, b] = self.rgb_at(p);
                     let hex = format!("#{r:02X}{g:02X}{b:02X}");
                     #[cfg(any(debug_assertions, feature = "devscript"))]
-                    let scripted = self.script.is_some();
+                    let scripted = self.script.is_some() && std::env::var_os("CUTLINE_REAL_CLIPBOARD").is_none();
                     #[cfg(not(any(debug_assertions, feature = "devscript")))]
                     let scripted = false;
                     if scripted {
@@ -1129,7 +1129,7 @@ impl Overlay {
                     Action::Copy => {
                         // Scripted dev runs write a file instead of touching the real clipboard.
                         #[cfg(any(debug_assertions, feature = "devscript"))]
-                        let scripted = self.script.is_some();
+                        let scripted = self.script.is_some() && std::env::var_os("CUTLINE_REAL_CLIPBOARD").is_none();
                         #[cfg(not(any(debug_assertions, feature = "devscript")))]
                         let scripted = false;
                         if scripted {

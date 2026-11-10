@@ -140,6 +140,16 @@ impl Overlay {
             }
             Op::Text(s) => raw.events.push(egui::Event::Text(s)),
             Op::Shot(name) => {
+                // Record the real scaling next to the picture, so DPI runs can prove it applied.
+                let info = format!(
+                    "pixels_per_point={} screen_points={:?} image_px={}x{} frame_scale={}",
+                    ctx.pixels_per_point(),
+                    self.screen,
+                    self.frame.width,
+                    self.frame.height,
+                    self.frame.scale
+                );
+                let _ = std::fs::write(crate::frame::temp_dir().join(format!("{name}.txt")), info);
                 ctx.send_viewport_cmd(ViewportCommand::Screenshot(ScreenshotCallback::new(move |img| {
                     let (w, h) = (img.size[0] as u32, img.size[1] as u32);
                     let px: Vec<u8> = img.pixels.iter().flat_map(|c| c.to_array()).collect();
