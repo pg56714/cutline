@@ -64,7 +64,7 @@ jobs:
             target: windows-x64
           - os: macos-latest
             target: macos-universal
-          - os: ubuntu-22.04
+          - os: ubuntu-24.04
             target: linux-x64
     runs-on: ${{ matrix.os }}
     steps:
