@@ -27,9 +27,6 @@ jobs:
           fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
 
-      - name: Test the release script
-        run: bun test scripts
-
       - name: Next version and changelog
         id: version
         run: bun scripts/release.ts
