@@ -212,6 +212,21 @@ pub fn capture_now() {
     }
 }
 
+/// One monitor's pixels and geometry in the platform's own units: pixels on Windows and Linux,
+/// points on macOS. `grab` turns this into the logical-point `Frame` the overlay expects.
+struct Raw {
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    dpi_scale: f32,
+    width: u32,
+    height: u32,
+    rgba: Vec<u8>,
+    /// `[x, y, w, h]`, topmost first.
+    windows: Vec<[f32; 4]>,
+}
+
 #[cfg(windows)]
 fn cursor_pos() -> Option<(i32, i32)> {
     use windows_sys::Win32::Foundation::POINT;
@@ -220,7 +235,7 @@ fn cursor_pos() -> Option<(i32, i32)> {
     (unsafe { GetCursorPos(&mut p) } != 0).then_some((p.x, p.y))
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
 fn cursor_pos() -> Option<(i32, i32)> {
     match mouse_position::mouse_position::Mouse::get_mouse_position() {
         mouse_position::mouse_position::Mouse::Position { x, y } => Some((x, y)),
@@ -228,7 +243,9 @@ fn cursor_pos() -> Option<(i32, i32)> {
     }
 }
 
-fn grab() -> Option<Frame> {
+/// Windows and macOS: xcap.
+#[cfg(not(target_os = "linux"))]
+fn grab_raw() -> Option<Raw> {
     let (cx, cy) = cursor_pos().unwrap_or((0, 0));
     // Fall back to the first monitor if the cursor position is unavailable.
     let mon = match xcap::Monitor::from_point(cx, cy) {
@@ -237,15 +254,6 @@ fn grab() -> Option<Frame> {
     };
     let img = mon.capture_image().ok()?;
     let dpi_scale = mon.scale_factor().unwrap_or(1.0).max(0.5);
-    // Windows and Linux report pixels; macOS reports points already.
-    let to_logical = |v: f32| if cfg!(target_os = "macos") { v } else { v / dpi_scale };
-
-    let x = to_logical(mon.x().ok()? as f32);
-    let y = to_logical(mon.y().ok()? as f32);
-    let lw = to_logical(mon.width().ok()? as f32);
-    let lh = to_logical(mon.height().ok()? as f32);
-    let (w, h) = (img.width(), img.height());
-    let scale = w as f32 / lw.max(1.0);
 
     let mut windows = Vec::new();
     if let Ok(list) = xcap::Window::all() {
@@ -260,15 +268,65 @@ fn grab() -> Option<Frame> {
             if win.title().map(|t| t.is_empty()).unwrap_or(true) {
                 continue;
             }
-            windows.push([
-                to_logical(wx as f32),
-                to_logical(wy as f32),
-                to_logical(ww as f32),
-                to_logical(wh as f32),
-            ]);
+            windows.push([wx as f32, wy as f32, ww as f32, wh as f32]);
         }
     }
-    Some(Frame { x, y, lw, lh, width: w, height: h, scale, windows, rgba: img.into_raw() })
+    Some(Raw {
+        x: mon.x().ok()? as f32,
+        y: mon.y().ok()? as f32,
+        w: mon.width().ok()? as f32,
+        h: mon.height().ok()? as f32,
+        dpi_scale,
+        width: img.width(),
+        height: img.height(),
+        rgba: img.into_raw(),
+        windows,
+    })
+}
+
+/// Linux: talk to the X server directly (see capture_x11.rs).
+#[cfg(target_os = "linux")]
+fn grab_raw() -> Option<Raw> {
+    if crate::capture_x11::is_wayland() {
+        message_box(
+            "Cutline can't capture the screen on Wayland yet.\n\n\
+             Log in with an X11 session (for example \"Ubuntu on Xorg\") to use it. \
+             Setting CUTLINE_FORCE_X11=1 captures only X11 windows through XWayland.",
+        );
+        return None;
+    }
+    match crate::capture_x11::grab() {
+        Ok(c) => Some(Raw {
+            x: c.x as f32,
+            y: c.y as f32,
+            w: c.w as f32,
+            h: c.h as f32,
+            dpi_scale: c.dpi_scale,
+            width: c.w,
+            height: c.h,
+            rgba: c.rgba,
+            windows: c.windows.iter().map(|w| [w[0] as f32, w[1] as f32, w[2] as f32, w[3] as f32]).collect(),
+        }),
+        Err(e) => {
+            eprintln!("cutline: screen capture failed: {e}");
+            None
+        }
+    }
+}
+
+fn grab() -> Option<Frame> {
+    let raw = grab_raw()?;
+    // Windows and Linux report pixels; macOS reports points already.
+    let to_logical = |v: f32| if cfg!(target_os = "macos") { v } else { v / raw.dpi_scale };
+    let (x, y) = (to_logical(raw.x), to_logical(raw.y));
+    let (lw, lh) = (to_logical(raw.w), to_logical(raw.h));
+    let scale = raw.width as f32 / lw.max(1.0);
+    let windows = raw
+        .windows
+        .iter()
+        .map(|w| [to_logical(w[0]), to_logical(w[1]), to_logical(w[2]), to_logical(w[3])])
+        .collect();
+    Some(Frame { x, y, lw, lh, width: raw.width, height: raw.height, scale, windows, rgba: raw.rgba })
 }
 
 fn spawn_capture() -> Option<Child> {

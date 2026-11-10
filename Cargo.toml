@@ -18,6 +18,10 @@ image = { version = "0.25.10", default-features = false, features = ["png"] }
 rfd = "0.18.0"
 tao = "0.37.2"
 tray-icon = "0.26.1"
+
+# Screen capture on Windows and macOS. Linux talks to the X server itself (src/capture_x11.rs):
+# xcap's Linux back ends need a newer libpipewire than Ubuntu 22.04 ships.
+[target.'cfg(not(target_os = "linux"))'.dependencies]
 xcap = "0.9.10"
 
 # Windows-only: DPI awareness, cursor position, foreground permission.
@@ -28,13 +32,14 @@ windows-sys = { version = "0.61.2", features = [
     "Win32_UI_HiDpi",
 ] }
 
-# macOS / Linux: cursor position (Windows uses GetCursorPos directly).
-[target.'cfg(not(windows))'.dependencies]
+# macOS: cursor position (Windows uses GetCursorPos, Linux asks the X server).
+[target.'cfg(target_os = "macos")'.dependencies]
 mouse_position = "0.1.4"
 
-# Linux windowing back ends for winit (eframe's defaults are turned off above).
+# Linux: windowing back ends for winit (eframe's defaults are turned off above) and the X11 capture.
 [target.'cfg(target_os = "linux")'.dependencies]
 eframe = { version = "0.37.0", default-features = false, features = ["x11", "wayland"] }
+x11rb = { version = "0.13", features = ["randr"] }
 
 [profile.release]
 opt-level = 3

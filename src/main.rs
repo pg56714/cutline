@@ -1,6 +1,8 @@
 // No console window in release builds; debug builds keep it for logging.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+#[cfg(target_os = "linux")]
+mod capture_x11;
 mod daemon;
 mod frame;
 mod overlay;
