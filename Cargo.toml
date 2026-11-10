@@ -1,0 +1,44 @@
+[package]
+name = "cutline"
+version = "0.1.0"
+edition = "2024"
+description = "A fast, Snipaste-style screenshot tool: freeze, select, annotate, copy / save / pin."
+license = "Apache-2.0"
+
+[features]
+# Compile the scripted-input test harness into release builds too (dev/testing only).
+devscript = []
+
+[dependencies]
+arboard = "3.7.0"
+chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
+eframe = { version = "0.37.0", default-features = false, features = ["glow", "default_fonts", "system_fonts"] }
+global-hotkey = "0.10.0"
+image = { version = "0.25.10", default-features = false, features = ["png"] }
+rfd = "0.18.0"
+tao = "0.37.2"
+tray-icon = "0.26.1"
+xcap = "0.9.10"
+
+# Windows-only: DPI awareness, cursor position, foreground permission.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_HiDpi",
+] }
+
+# macOS / Linux: cursor position (Windows uses GetCursorPos directly).
+[target.'cfg(not(windows))'.dependencies]
+mouse_position = "0.1.4"
+
+# Linux windowing back ends for winit (eframe's defaults are turned off above).
+[target.'cfg(target_os = "linux")'.dependencies]
+eframe = { version = "0.37.0", default-features = false, features = ["x11", "wayland"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+panic = "abort"
