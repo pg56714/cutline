@@ -55,8 +55,8 @@ You can also override it for one run with the `CUTLINE_HOTKEY` environment varia
 | Platform | Status |
 | --- | --- |
 | Windows 11 | Developed and tested, including a clean Windows 11 VM at 100% and 125% display scaling (hotkey, selection, annotations, save, pin, system clipboard, tray icon). Not yet tested above 125% scaling, with mixed-DPI monitors, or by clicking the tray menu. |
-| Linux, X11 | Builds and runs (checked under Xvfb: hotkey, single instance, selection, window snap, annotations, copy). The tray icon needs a desktop with a status-notifier / AppIndicator host. |
-| Linux, Wayland | **Not supported yet.** Screen capture goes through the desktop portal, which asks for permission and cannot be driven the way this tool needs; global hotkeys and always-on-top overlays are also restricted. Use an X11 session. |
+| Linux, X11 | Built and run on Ubuntu 22.04 and 24.04 (checked under a virtual X server: hotkey, single instance, selection, window snap, annotations, copy). The release build targets Ubuntu 22.04 (glibc 2.35), so it runs there and on anything newer. The tray icon needs a desktop with a status-notifier / AppIndicator host. Not tested on a real desktop session. |
+| Linux, Wayland | **Not supported yet.** Cutline captures through the X server, which on Wayland would give a black or partial picture, so it shows a message instead. Screen capture on Wayland has to go through the desktop portal, which asks for permission; global hotkeys and always-on-top overlays are also restricted. Use an X11 session. `CUTLINE_FORCE_X11=1` skips the check and captures only X11 windows through XWayland. |
 | macOS | Type-checks (`cargo check --target aarch64-apple-darwin`) but has **never been run**. Needs the Screen Recording permission. |
 
 ## Build
@@ -72,13 +72,16 @@ The binary is `target/<target>/release/cutline.exe`.
 **Linux** (Debian/Ubuntu package names):
 
 ```
-sudo apt install build-essential pkg-config libgtk-3-dev libxdo-dev libayatana-appindicator3-dev \
-  libpipewire-0.3-dev libspa-0.2-dev libclang-dev libgbm-dev libdrm-dev libxcb1-dev \
-  libxcb-randr0-dev libxcb-shm0-dev libxcb-xfixes0-dev libxkbcommon-dev libdbus-1-dev \
-  libegl1-mesa-dev libgl1-mesa-dev libwayland-dev
+sudo apt install build-essential pkg-config libgtk-3-dev libxdo-dev libayatana-appindicator3-dev
 ```
 
-At run time the Linux build needs `libgtk-3-0`, `libayatana-appindicator3-1` and `libxdo3`.
+On Linux the screen is captured by talking to the X server directly (`src/capture_x11.rs`), so none
+of the pipewire / Wayland development packages are needed. This is also what lets the build run on
+Ubuntu 22.04: the pipewire bindings that xcap pulls in on Linux need a newer libpipewire than 22.04 ships.
+
+At run time the Linux build needs `libgtk-3-0`, `libayatana-appindicator3-1`, `libxdo3` and
+`libxkbcommon-x11-0` (a desktop Ubuntu has them; a minimal install may not), plus the usual OpenGL
+(Mesa) libraries.
 
 `cutline --now` takes a screenshot immediately without starting the resident tray process.
 

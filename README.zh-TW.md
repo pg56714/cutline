@@ -53,8 +53,8 @@ Cutline 會提示後結束;請關閉那個程式,或改用別的按鍵。
 | 平台 | 狀態 |
 | --- | --- |
 | Windows 11 | 已開發並測試,包含在乾淨的 Windows 11 虛擬機上以 100% 與 125% 顯示縮放測試(熱鍵、選取、標註、存檔、釘選、系統剪貼簿、系統匣圖示)。尚未測試 125% 以上的縮放、混合 DPI 的多螢幕,也沒有實際點過系統匣選單。 |
-| Linux(X11) | 可編譯並執行(在 Xvfb 下檢查過:熱鍵、單一實例、選取、視窗吸附、標註、複製)。系統匣圖示需要桌面環境提供 status-notifier / AppIndicator。 |
-| Linux(Wayland) | **目前不支援。** 畫面擷取要經過桌面的 portal,會跳出授權要求,無法照這個工具需要的方式操作;全域熱鍵與置頂的全螢幕視窗在 Wayland 上也受到限制。請使用 X11 工作階段。 |
+| Linux(X11) | 已在 Ubuntu 22.04 與 24.04 上編譯並執行(在虛擬 X 伺服器下檢查過:熱鍵、單一實例、選取、視窗吸附、標註、複製)。發佈版以 Ubuntu 22.04(glibc 2.35)為建置目標,所以在 22.04 以及更新的系統上都能執行。系統匣圖示需要桌面環境提供 status-notifier / AppIndicator。尚未在真實的桌面工作階段中測試。 |
+| Linux(Wayland) | **目前不支援。** Cutline 是透過 X 伺服器擷取畫面,在 Wayland 上只會得到全黑或不完整的圖片,所以改為顯示提示訊息。Wayland 上的畫面擷取必須經過桌面的 portal,會跳出授權要求;全域熱鍵與置頂的全螢幕視窗也受到限制。請使用 X11 工作階段。設定 `CUTLINE_FORCE_X11=1` 可略過檢查,但只能透過 XWayland 擷取 X11 的視窗。 |
 | macOS | 通過型別檢查(`cargo check --target aarch64-apple-darwin`),但**從未實際執行過**。需要「螢幕錄製」權限。 |
 
 ## 建置
@@ -70,13 +70,14 @@ cargo build --release
 **Linux**(Debian/Ubuntu 套件名稱):
 
 ```
-sudo apt install build-essential pkg-config libgtk-3-dev libxdo-dev libayatana-appindicator3-dev \
-  libpipewire-0.3-dev libspa-0.2-dev libclang-dev libgbm-dev libdrm-dev libxcb1-dev \
-  libxcb-randr0-dev libxcb-shm0-dev libxcb-xfixes0-dev libxkbcommon-dev libdbus-1-dev \
-  libegl1-mesa-dev libgl1-mesa-dev libwayland-dev
+sudo apt install build-essential pkg-config libgtk-3-dev libxdo-dev libayatana-appindicator3-dev
 ```
 
-執行時 Linux 版需要 `libgtk-3-0`、`libayatana-appindicator3-1` 與 `libxdo3`。
+Linux 上是直接和 X 伺服器溝通來擷取畫面(`src/capture_x11.rs`),所以不需要任何 pipewire / Wayland 的開發套件。
+這也是能在 Ubuntu 22.04 上建置的原因:xcap 在 Linux 上會拉進 pipewire 的綁定,而它需要比 22.04 內建更新的 libpipewire。
+
+執行時 Linux 版需要 `libgtk-3-0`、`libayatana-appindicator3-1`、`libxdo3` 與 `libxkbcommon-x11-0`
+(桌面版 Ubuntu 都有,最小安裝可能沒有),以及一般的 OpenGL(Mesa)函式庫。
 
 `cutline --now` 會立刻截圖,不需要啟動常駐的系統匣程式。
 
