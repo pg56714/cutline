@@ -52,7 +52,7 @@ You can also override it for one run with the `CUTLINE_HOTKEY` environment varia
 
 | Platform | Status |
 | --- | --- |
-| Windows 11 | Developed and tested here (hotkey, selection, annotations, save, pin, copy-to-file). Not yet verified on a clean machine, at display scaling above 100%, or the tray menu / system clipboard path. |
+| Windows 11 | Developed and tested, including a clean Windows 11 VM at 100% and 125% display scaling (hotkey, selection, annotations, save, pin, system clipboard, tray icon). Not yet tested above 125% scaling, with mixed-DPI monitors, or by clicking the tray menu. |
 | Linux, X11 | Builds and runs (checked under Xvfb: hotkey, single instance, selection, window snap, annotations, copy). The tray icon needs a desktop with a status-notifier / AppIndicator host. |
 | Linux, Wayland | **Not supported yet.** Screen capture goes through the desktop portal, which asks for permission and cannot be driven the way this tool needs; global hotkeys and always-on-top overlays are also restricted. Use an X11 session. |
 | macOS | Type-checks (`cargo check --target aarch64-apple-darwin`) but has **never been run**. Needs the Screen Recording permission. |
@@ -76,6 +76,8 @@ sudo apt install build-essential pkg-config libgtk-3-dev libxdo-dev libayatana-a
   libegl1-mesa-dev libgl1-mesa-dev libwayland-dev
 ```
 
+At run time the Linux build needs `libgtk-3-0`, `libayatana-appindicator3-1` and `libxdo3`.
+
 `cutline --now` takes a screenshot immediately without starting the resident tray process.
 
 ### Test harness
@@ -97,9 +99,26 @@ One executable, three modes:
 ## Known limitations
 
 - Only the monitor under the cursor is captured, not the whole virtual desktop.
-- Display scaling other than 100% and mixed-DPI multi-monitor setups are not tested yet.
-- A pinned image can sit about 1 px lower than the original on Windows.
+- Display scaling above 125% and mixed-DPI multi-monitor setups are not tested yet.
 - No scrolling capture, no screen recording, no OCR.
+
+## Contributing
+
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)
+(`feat(overlay): ...`, `fix: ...`, `docs: ...`). They are not just style: the release workflow reads them
+to pick the next version and write the changelog.
+
+## Releasing
+
+From the Actions tab, run **Release** by hand. It looks at the Conventional Commits since the last tag:
+`feat` bumps the minor version, `fix` and `perf` bump the patch, a `!` or a `BREAKING CHANGE:` footer is a
+breaking change (the minor version while below 1.0). If nothing releasable changed it stops. Otherwise it
+updates `CHANGELOG.md` and the version, tags, builds Windows (`.exe`), macOS (universal `.tar.gz`) and
+Linux (`.tar.gz`), and publishes the release once every build has uploaded. The macOS and Linux builds
+are unsigned and less tested than the Windows one.
+
+`bun scripts/release.ts --dry-run` shows what the next release would contain, and `bun test scripts`
+runs the script's tests.
 
 ## License
 
