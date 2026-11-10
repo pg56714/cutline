@@ -1,5 +1,7 @@
 # Cutline
 
+English | [繁體中文](README.zh-TW.md)
+
 A small, fast screenshot tool for Windows in the style of Snipaste's capture mode:
 press a hotkey, the screen freezes, pick a region, annotate it, then copy, save or pin it.
 
