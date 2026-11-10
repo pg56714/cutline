@@ -1,0 +1,144 @@
+# Run by hand from the Actions tab ("Run workflow"). It works out the next version from the
+# Conventional Commits since the last tag, commits CHANGELOG.md and the version bump, tags it,
+# builds Windows / macOS / Linux, and publishes the release once every build has uploaded.
+name: Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.version.outputs.skip }}
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      release_id: ${{ steps.draft.outputs.release_id }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Test the release script
+        run: bun test scripts
+
+      - name: Next version and changelog
+        id: version
+        run: bun scripts/release.ts
+
+      - name: Commit, tag and open a draft release
+        id: draft
+        if: steps.version.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md Cargo.toml Cargo.lock
+          git commit -m "chore(release): $TAG"
+          git tag "$TAG"
+          git push origin "HEAD:${GITHUB_REF_NAME}" "$TAG"
+          # A draft until every platform has uploaded; the last job publishes it.
+          # Create it through the API so the id comes straight back. Looking it up by tag_name
+          # afterwards finds nothing: drafts are listed as "untagged-<hash>" until published.
+          RELEASE_ID=$(gh api -X POST "repos/${GITHUB_REPOSITORY}/releases" \
+            -f tag_name="$TAG" -f name="Cutline $TAG" -F draft=true -F body=@release-notes.md \
+            --jq .id)
+          test -n "$RELEASE_ID"
+          echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    if: needs.prepare.outputs.skip != 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: windows-x64
+          - os: macos-latest
+            target: macos-universal
+          - os: ubuntu-24.04
+            target: linux-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libgtk-3-dev libxdo-dev \
+            libayatana-appindicator3-dev libpipewire-0.3-dev libspa-0.2-dev libclang-dev \
+            libgbm-dev libdrm-dev libxcb1-dev libxcb-randr0-dev libxcb-shm0-dev \
+            libxcb-xfixes0-dev libxkbcommon-dev libdbus-1-dev libegl1-mesa-dev \
+            libgl1-mesa-dev libwayland-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ runner.os == 'macOS' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build and package
+        shell: bash
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          mkdir -p dist
+          case "$RUNNER_OS" in
+            Windows)
+              cargo build --release --locked
+              # The bare .exe runs without installing.
+              cp target/release/cutline.exe "dist/cutline-$TAG-$TARGET.exe"
+              ;;
+            macOS)
+              cargo build --release --locked --target aarch64-apple-darwin
+              cargo build --release --locked --target x86_64-apple-darwin
+              lipo -create -output dist/cutline \
+                target/aarch64-apple-darwin/release/cutline target/x86_64-apple-darwin/release/cutline
+              chmod +x dist/cutline
+              tar -czf "dist/cutline-$TAG-$TARGET.tar.gz" -C dist cutline
+              rm dist/cutline
+              ;;
+            Linux)
+              cargo build --release --locked
+              chmod +x target/release/cutline
+              tar -czf "dist/cutline-$TAG-$TARGET.tar.gz" -C target/release cutline
+              ;;
+          esac
+          ls -l dist
+
+      - name: Upload to the draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
+        run: |
+          for f in dist/*; do
+            gh api --method POST -H "Content-Type: application/octet-stream" \
+              "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?name=$(basename "$f")" \
+              --input "$f" > /dev/null
+            echo "uploaded $(basename "$f")"
+          done
+
+  publish:
+    needs: [prepare, build]
+    if: needs.prepare.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "${{ needs.prepare.outputs.tag }}" --repo "${GITHUB_REPOSITORY}" --draft=false --latest
