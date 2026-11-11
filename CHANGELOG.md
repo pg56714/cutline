@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.0 (2026-11-11)
+
+### Features
+
+- **release:** ship installers (NSIS, dmg, AppImage, deb) via cargo-packager ([0766771](https://github.com/pg56714/cutline/commit/07667717a6536a8d42492005b28f9d2286300a45))
+
 ## v0.1.2 (2026-11-11)
 
 ### Fixes
