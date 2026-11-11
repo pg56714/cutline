@@ -29,6 +29,8 @@ fn main() {
         }
         println!("cargo:warning=windres not found: the exe will have no icon");
     } else {
+        // Only a Windows host has the dependency (see Cargo.toml) and a resource compiler.
+        #[cfg(windows)]
         let _ = embed_resource::compile("assets/cutline.rc", embed_resource::NONE);
     }
 }
