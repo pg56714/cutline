@@ -5,7 +5,7 @@ English | [繁體中文](README.zh-TW.md)
 A small, fast screenshot tool for Windows in the style of Snipaste's capture mode:
 press a hotkey, the screen freezes, pick a region, annotate it, then copy, save or pin it.
 
-Written in Rust (egui + glow). The release binary is a single exe with no installer and no runtime.
+Written in Rust (egui + glow). The release is a single exe (also available as an installer) with no runtime.
 
 > Cutline is an independent project. It is not affiliated with or derived from Snipaste;
 > it only follows the same general workflow.
@@ -118,8 +118,8 @@ to pick the next version and write the changelog.
 From the Actions tab, run **Release** by hand. It looks at the Conventional Commits since the last tag:
 `feat` bumps the minor version, `fix` and `perf` bump the patch, a `!` or a `BREAKING CHANGE:` footer is a
 breaking change (the minor version while below 1.0). If nothing releasable changed it stops. Otherwise it
-updates `CHANGELOG.md` and the version, tags, builds Windows (`.exe`), macOS (universal `.tar.gz`) and
-Linux (`.tar.gz`), and publishes the release once every build has uploaded. The macOS and Linux builds
+updates `CHANGELOG.md` and the version, tags, builds Windows (installer + portable `.exe`), macOS (universal `.dmg`) and
+Linux (`.AppImage` + `.deb`), and publishes the release once every build has uploaded. The macOS and Linux builds
 are unsigned and less tested than the Windows one.
 
 `bun scripts/release.ts --dry-run` shows what the next release would contain, and `bun test scripts`

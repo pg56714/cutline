@@ -4,7 +4,7 @@
 
 一個小而快的截圖工具,操作流程仿照 Snipaste 的截圖模式:按下熱鍵、畫面凍結、框選區域、加上標註,然後複製、存檔或釘選。
 
-以 Rust(egui + glow)撰寫。發佈的執行檔是單一個 exe,不需要安裝程式,也不需要額外的執行環境。
+以 Rust(egui + glow)撰寫。發佈的是單一個 exe(也有安裝程式可選),不需要額外的執行環境。
 
 > Cutline 是獨立的專案,與 Snipaste 沒有關聯,也不是從它衍生而來;只是採用相同的大致流程。
 
@@ -112,7 +112,7 @@ Commit 訊息遵循 [Conventional Commits](https://www.conventionalcommits.org/z
 在 Actions 頁面手動執行 **Release**。它會看上一個 tag 之後的 Conventional Commits:
 `feat` 會升次版號,`fix` 與 `perf` 會升修訂號,帶 `!` 或 `BREAKING CHANGE:` 註腳的是破壞性變更
 (版本低於 1.0 時升次版號)。如果沒有任何值得發佈的變更就會停止;否則它會更新 `CHANGELOG.md` 與版本號、打 tag、
-建置 Windows(`.exe`)、macOS(universal `.tar.gz`)與 Linux(`.tar.gz`),等所有建置都上傳完畢後才發佈 release。
+建置 Windows(安裝程式與免安裝 `.exe`)、macOS(universal `.dmg`)與 Linux(`.AppImage` 與 `.deb`),等所有建置都上傳完畢後才發佈 release。
 macOS 與 Linux 的版本未經簽章,測試程度也不如 Windows 版。
 
 `bun scripts/release.ts --dry-run` 會顯示下一次發佈的內容,`bun test scripts` 會執行該腳本的測試。

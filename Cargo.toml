@@ -48,6 +48,21 @@ x11rb = { version = "0.13", features = ["randr"] }
 [target.'cfg(windows)'.build-dependencies]
 embed-resource = "3"
 
+# Installers are built with cargo-packager (see .github/workflows/release.yml).
+[package.metadata.packager]
+product-name = "Cutline"
+identifier = "app.cutline.desktop"
+description = "A fast, Snipaste-style screenshot tool: freeze, select, annotate, copy / save / pin."
+authors = ["Sam Hong"]
+license-file = "LICENSE"
+out-dir = "dist"
+icons = ["assets/32x32.png", "assets/128x128.png", "assets/128x128@2x.png", "assets/icon.ico"]
+binaries = [{ path = "cutline", main = true }]
+
+[package.metadata.packager.nsis]
+installer-icon = "assets/icon.ico"
+display-language-selector = false
+
 [profile.release]
 opt-level = 3
 lto = "thin"

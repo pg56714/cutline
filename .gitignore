@@ -2,3 +2,4 @@
 /target-devscript
 # Machine-specific toolchain override (this dev box builds with the gnu target).
 /.cargo/config.toml
+/dist
