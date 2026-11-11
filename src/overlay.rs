@@ -88,7 +88,7 @@ enum Annot {
     Pen { pts: Vec<Pos2>, c: Color32, w: f32 },
     Highlight { pts: Vec<Pos2>, c: Color32, w: f32 },
     Mosaic { r: Rect },
-    Text { pos: Pos2, text: String, c: Color32, size: f32, bounds: Rect },
+    Text { pos: Pos2, text: String, c: Color32, size: f32, wrap: f32, bounds: Rect },
 }
 
 enum Drag {
@@ -98,6 +98,8 @@ enum Drag {
     Resize { h: (i8, i8), orig: Rect },
     Draw { start: Pos2 },
     Erase,
+    /// Dragging the text box's right-edge handle; `grab` = pointer x minus the box's right edge.
+    TextWidth { grab: f32 },
 }
 
 struct Editing {
@@ -105,7 +107,12 @@ struct Editing {
     text: String,
     c: Color32,
     size: f32,
+    /// Wrap width in points; adjustable by dragging the box's right edge.
+    width: f32,
 }
+
+const TEXT_MIN_W: f32 = 40.0;
+const TEXT_DEFAULT_W: f32 = 180.0;
 
 /// A save dialog is open (it runs on its own thread).
 struct Export {
@@ -368,17 +375,24 @@ impl Overlay {
         }
     }
 
+    /// Grab zone for resizing the text box: a strip just right of (and slightly over) its edge.
+    fn text_handle(&self) -> Rect {
+        let r = self.edit_rect;
+        Rect::from_min_max(pos2(r.max.x - 1.0, r.min.y - 3.0), pos2(r.max.x + 11.0, r.max.y + 3.0))
+    }
+
     fn commit_text(&mut self, ctx: &Context) {
         if let Some(e) = self.editing.take() {
             if !e.text.trim().is_empty() {
-                let galley = ctx.layer_painter(LayerId::background()).layout_no_wrap(
+                let galley = ctx.layer_painter(LayerId::background()).layout(
                     e.text.clone(),
                     FontId::proportional(e.size),
                     e.c,
+                    e.width,
                 );
                 let bounds = Rect::from_min_size(e.pos, galley.size());
                 self.push_history();
-                self.shapes.push(Annot::Text { pos: e.pos, text: e.text, c: e.c, size: e.size, bounds });
+                self.shapes.push(Annot::Text { pos: e.pos, text: e.text, c: e.c, size: e.size, wrap: e.width, bounds });
             }
         }
     }
@@ -461,7 +475,7 @@ impl Overlay {
                 self.drag = Drag::Draw { start: p };
             }
             Tool::Text => {
-                self.editing = Some(Editing { pos: p, text: String::new(), c, size: TEXT_SIZES[self.size_idx] });
+                self.editing = Some(Editing { pos: p, text: String::new(), c, size: TEXT_SIZES[self.size_idx], width: TEXT_DEFAULT_W });
                 self.edit_rect = Rect::from_min_size(p, vec2(4.0, 4.0));
                 self.drag = Drag::None;
             }
@@ -779,7 +793,9 @@ impl Overlay {
             self.press_btn = None;
             self.press_sub = None;
             if self.editing.is_some() {
-                if !self.edit_rect.expand(4.0).contains(p) {
+                if self.text_handle().contains(p) {
+                    self.drag = Drag::TextWidth { grab: p.x - self.edit_rect.max.x };
+                } else if !self.edit_rect.expand(4.0).contains(p) {
                     self.commit_text(ctx);
                 }
                 return;
@@ -839,6 +855,13 @@ impl Overlay {
                     }
                 }
                 Drag::Erase => self.erase_at(p),
+                Drag::TextWidth { grab } => {
+                    let grab = *grab;
+                    if let Some(e) = self.editing.as_mut() {
+                        let max_w = (self.screen.max.x - e.pos.x - 12.0).max(TEXT_MIN_W);
+                        e.width = (p.x - grab - e.pos.x).clamp(TEXT_MIN_W, max_w);
+                    }
+                }
                 Drag::None => {}
             }
         }
@@ -892,7 +915,10 @@ impl Overlay {
         }
 
         // --- cursor ---
+        let on_text_handle = self.editing.is_some() && self.text_handle().contains(p);
         let icon = match (&self.drag, self.sel) {
+            (Drag::TextWidth { .. }, _) => CursorIcon::ResizeHorizontal,
+            _ if on_text_handle => CursorIcon::ResizeHorizontal,
             (Drag::Move { .. }, _) => CursorIcon::Grabbing,
             (_, None) => CursorIcon::Crosshair,
             (_, Some(sel)) => {
@@ -1016,19 +1042,26 @@ impl Overlay {
                         .font(font)
                         .text_color(color)
                         .frame(egui::Frame::NONE)
-                        .desired_width(40.0)
+                        .desired_width(e.width)
                         .desired_rows(1)
                         .lock_focus(true);
-                    let r = ui.add(te);
+                    // The Area's max width is last frame's size, so give the editor its own width.
+                    let r = ui.allocate_ui(vec2(e.width, 0.0), |ui| ui.add(te)).inner;
                     r.request_focus();
                     r.rect
                 });
-            self.edit_rect = area.inner;
-            p.rect_stroke(
-                self.edit_rect.expand(3.0),
-                0.0,
-                Stroke::new(1.0, Color32::from_rgba_unmultiplied(255, 255, 255, 200)),
-                StrokeKind::Outside,
+            let text_rect = area.inner;
+            self.edit_rect = text_rect;
+            let box_rect = text_rect.expand(3.0);
+            p.rect_filled(box_rect, 2.0, Color32::from_rgba_unmultiplied(0, 0, 0, 90));
+            p.rect_stroke(box_rect, 2.0, Stroke::new(1.5, ACCENT), StrokeKind::Outside);
+            let active = matches!(self.drag, Drag::TextWidth { .. });
+            let hc = if active { Color32::WHITE } else { ACCENT };
+            let hh = 18.0f32.min(box_rect.height());
+            p.rect_filled(
+                Rect::from_center_size(pos2(text_rect.max.x + 6.0, text_rect.center().y), vec2(4.0, hh)),
+                2.0,
+                hc,
             );
             if ctx.input(|i| i.modifiers.command && i.key_pressed(Key::Enter)) {
                 commit = true;
@@ -1413,8 +1446,9 @@ fn paint_annot(p: &Painter, a: &Annot, mosaic: Option<egui::TextureId>, screen: 
                 p.image(id, *r, uv, Color32::WHITE);
             }
         }
-        Annot::Text { pos, text, c, size, .. } => {
-            p.text(*pos, Align2::LEFT_TOP, text, FontId::proportional(*size), *c);
+        Annot::Text { pos, text, c, size, wrap, .. } => {
+            let galley = p.layout(text.clone(), FontId::proportional(*size), *c, *wrap);
+            p.galley(*pos, galley, *c);
         }
     }
 }
