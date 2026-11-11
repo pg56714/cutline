@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.1.1 (2026-11-11)
+
+### Fixes
+
+- **overlay:** remove flicker on copy/save/pin, add exe icon, Snipaste-like dimming ([a361fa2](https://github.com/pg56714/cutline/commit/a361fa2ce01d3dee09acd50243cf824321a4c4aa))
+
+### Other
+
+- **readme:** note the Linux release is built on Ubuntu 24.04 ([6a5a33c](https://github.com/pg56714/cutline/commit/6a5a33cad69c109ca09a7e1e1663eabd89eef639))
+- **release:** build Linux on ubuntu-24.04 ([6546923](https://github.com/pg56714/cutline/commit/6546923fca4a37a26315f6e5104490b6838b3305))
+
 ## v0.1.0 (2026-11-10)
 
 ### Features
