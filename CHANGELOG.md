@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.2 (2026-11-11)
+
+### Fixes
+
+- **build:** only call embed-resource on Windows hosts ([95d77ee](https://github.com/pg56714/cutline/commit/95d77ee0753829fb54f28ae9a905cf02122a52e5))
+
 ## v0.1.1 (2026-11-11)
 
 ### Fixes
