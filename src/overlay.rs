@@ -1,30 +1,33 @@
 //! The capture overlay: shows the frozen frame, lets you pick a region
 //! (hover a window to snap to it, or drag), annotate it, then copy / save / pin.
 //!
-//! Export trick: instead of re-rasterising annotations on the CPU we draw one
-//! "clean" frame (screenshot + annotations only) and ask egui for a screenshot
-//! of that frame, then crop the selection out of it. What you see is what you get.
+//! Export is rendered off screen: the selection is cropped from the frozen frame and the annotations
+//! are drawn on top through a headless egui context + a small software rasteriser (`raster`).
+//! The overlay itself never changes while exporting, so copy / save / pin cannot flicker.
 
 #![allow(deprecated)] // egui 0.37 deprecates Id::new in favour of salts; harmless here.
 
 use crate::frame::Frame;
 use eframe::egui::{
     self, Align2, Color32, ColorImage, Context, CursorIcon, FontId, Id, Key, LayerId, Order, Painter,
-    Pos2, Rect, ScreenshotCallback, Shape, Stroke, StrokeKind, TextureHandle, TextureOptions, Ui,
-    Vec2, ViewportBuilder, ViewportCommand, WindowLevel, pos2, vec2,
+    Pos2, Rect, Shape, Stroke, StrokeKind, TextureHandle, TextureOptions, Ui,
+    Vec2, ViewportBuilder, ViewportCommand, pos2, vec2,
 };
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::{Arc, Mutex};
 
 #[cfg(any(debug_assertions, feature = "devscript"))]
 mod devscript;
+mod raster;
 
 const ACCENT: Color32 = Color32::from_rgb(30, 136, 229);
 const BAR_BG: Color32 = Color32::from_rgb(247, 247, 247);
 const BAR_LINE: Color32 = Color32::from_rgb(205, 205, 205);
 const ICON: Color32 = Color32::from_rgb(70, 70, 70);
 const ICON_OFF: Color32 = Color32::from_rgb(185, 185, 185);
-const DIM: Color32 = Color32::from_rgba_premultiplied(0, 0, 0, 120);
+// Snipaste-like: a light veil while picking, a darker one once a region is being dragged / selected.
+const DIM_PICK: Color32 = Color32::from_rgba_premultiplied(0, 0, 0, 70);
+const DIM: Color32 = Color32::from_rgba_premultiplied(0, 0, 0, 145);
 
 const PALETTE: [Color32; 8] = [
     Color32::from_rgb(229, 57, 53),
@@ -104,12 +107,9 @@ struct Editing {
     size: f32,
 }
 
+/// A save dialog is open (it runs on its own thread).
 struct Export {
-    action: Action,
-    /// 0: clean frame being drawn, screenshot not yet requested; 1: waiting; 2: save dialog open
-    stage: u8,
-    slot: Arc<Mutex<Option<Arc<ColorImage>>>>,
-    /// Save dialog result: 0 pending, 1 saved, 2 cancelled.
+    /// Dialog result: 0 pending, 1 saved, 2 cancelled.
     save_state: Arc<AtomicU8>,
 }
 
@@ -143,6 +143,7 @@ struct Overlay {
     edit_rect: Rect,
 
     export: Option<Export>,
+    save_job: Option<(u32, u32, Vec<u8>)>,
     frames: u32,
     #[cfg(any(debug_assertions, feature = "devscript"))]
     script: Option<devscript::Script>,
@@ -160,6 +161,7 @@ pub fn run(args: &[String]) {
             .with_title("Cutline")
             .with_decorations(false)
             .with_always_on_top()
+            .with_visible(false) // shown once the first frame is painted: no white flash
             .with_taskbar(false)
             .with_resizable(false)
             .with_position(pos)
@@ -212,6 +214,7 @@ impl Overlay {
             editing: None,
             edit_rect: Rect::NOTHING,
             export: None,
+            save_job: None,
             frames: 0,
             #[cfg(any(debug_assertions, feature = "devscript"))]
             script: std::env::var("CUTLINE_SCRIPT").ok().map(|s| devscript::parse(&s)),
@@ -386,6 +389,12 @@ impl Overlay {
         if self.mosaic_tex.is_some() {
             return;
         }
+        let ci = self.mosaic_image();
+        self.mosaic_tex = Some(ctx.load_texture("mosaic", ci, TextureOptions::NEAREST));
+    }
+
+    /// The whole frame pixelated in `MOSAIC_BLOCK` squares.
+    fn mosaic_image(&self) -> ColorImage {
         let (w, h) = (self.frame.width, self.frame.height);
         let mut out = vec![0u8; (w * h * 4) as usize];
         let mut by = 0;
@@ -415,8 +424,7 @@ impl Overlay {
             }
             by += MOSAIC_BLOCK;
         }
-        let ci = ColorImage::from_rgba_unmultiplied([w as usize, h as usize], &out);
-        self.mosaic_tex = Some(ctx.load_texture("mosaic", ci, TextureOptions::NEAREST));
+        ColorImage::from_rgba_unmultiplied([w as usize, h as usize], &out)
     }
 
     fn clamp_to(r: Rect, p: Pos2) -> Pos2 {
@@ -554,13 +562,86 @@ impl Overlay {
             return;
         }
         self.commit_text(ctx);
-        self.export = Some(Export {
-            action,
-            stage: 0,
-            slot: Arc::new(Mutex::new(None)),
-            save_state: Arc::new(AtomicU8::new(0)),
-        });
+        let Some((w, h, rgba)) = self.render_selection() else { return };
+        match action {
+            Action::Copy => {
+                // Scripted dev runs write a file instead of touching the real clipboard.
+                #[cfg(any(debug_assertions, feature = "devscript"))]
+                let scripted = self.script.is_some() && std::env::var_os("CUTLINE_REAL_CLIPBOARD").is_none();
+                #[cfg(not(any(debug_assertions, feature = "devscript")))]
+                let scripted = false;
+                if scripted {
+                    if let Some(im) = image::RgbaImage::from_raw(w, h, rgba) {
+                        let _ = im.save(crate::frame::temp_dir().join("export.png"));
+                    }
+                } else if let Ok(mut cb) = arboard::Clipboard::new() {
+                    let _ = cb.set_image(arboard::ImageData { width: w as usize, height: h as usize, bytes: rgba.into() });
+                }
+                close_overlay(ctx);
+            }
+            Action::Pin => match self.spawn_pin(w, h, rgba) {
+                Some(mut child) => {
+                    // Keep the overlay on screen until the pin window has painted its first frame,
+                    // then hide it: the pin takes over at the same spot with no gap.
+                    let state = Arc::new(AtomicU8::new(0));
+                    self.export = Some(Export { save_state: state.clone() });
+                    let c2 = ctx.clone();
+                    std::thread::spawn(move || {
+                        if let Some(out) = child.stdout.take() {
+                            let _ = std::io::BufRead::read_line(&mut std::io::BufReader::new(out), &mut String::new());
+                        }
+                        state.store(1, Ordering::SeqCst);
+                        c2.request_repaint();
+                    });
+                }
+                None => close_overlay(ctx),
+            },
+            Action::Save => {
+                // The dialog needs the window handle, which only `ui()` has: hand the pixels over.
+                self.save_job = Some((w, h, rgba));
+                self.export = Some(Export { save_state: Arc::new(AtomicU8::new(0)) });
+            }
+        }
         ctx.request_repaint();
+    }
+
+    /// Open the save dialog as a child of the overlay window, so it shows above the (topmost)
+    /// overlay without the overlay having to change anything on screen.
+    fn begin_save(&mut self, ctx: &Context, frame: &eframe::Frame, (w, h, rgba): (u32, u32, Vec<u8>)) {
+        let Some(ex) = self.export.as_ref() else { return };
+        let state = ex.save_state.clone();
+        let name = format!("Cutline_{}.png", chrono::Local::now().format("%Y%m%d_%H%M%S"));
+        let mut dlg = rfd::FileDialog::new().set_file_name(name).add_filter("PNG image", &["png"]).set_parent(frame);
+        if let Some(home) = std::env::var_os("USERPROFILE") {
+            let pics = std::path::PathBuf::from(home).join("Pictures");
+            if pics.is_dir() {
+                dlg = dlg.set_directory(pics);
+            }
+        }
+        let c2 = ctx.clone();
+        std::thread::spawn(move || {
+            let saved = dlg.save_file().and_then(|mut path| {
+                if path.extension().is_none() {
+                    path.set_extension("png");
+                }
+                image::RgbaImage::from_raw(w, h, rgba).and_then(|im| im.save(path).ok())
+            });
+            state.store(if saved.is_some() { 1 } else { 2 }, Ordering::SeqCst);
+            c2.request_repaint();
+        });
+    }
+
+    /// While the save dialog is open: close on success, resume editing on cancel.
+    fn poll_save(&mut self, ctx: &Context) {
+        let Some(ex) = self.export.as_ref() else { return };
+        match ex.save_state.load(Ordering::SeqCst) {
+            1 => close_overlay(ctx),
+            2 => {
+                self.export = None;
+                ctx.send_viewport_cmd(ViewportCommand::Focus);
+            }
+            _ => {}
+        }
     }
 
     fn click_btn(&mut self, ctx: &Context, b: Btn) {
@@ -574,7 +655,7 @@ impl Overlay {
                 self.do_undo();
             }
             Btn::Redo => self.do_redo(),
-            Btn::Close => ctx.send_viewport_cmd(ViewportCommand::Close),
+            Btn::Close => close_overlay(ctx),
             Btn::Pin => self.start_export(ctx, Action::Pin),
             Btn::Save => self.start_export(ctx, Action::Save),
             Btn::Copy => self.start_export(ctx, Action::Copy),
@@ -636,7 +717,7 @@ impl Overlay {
             if self.editing.is_some() {
                 self.commit_text(ctx);
             } else {
-                ctx.send_viewport_cmd(ViewportCommand::Close);
+                close_overlay(ctx);
                 return;
             }
         }
@@ -688,7 +769,7 @@ impl Overlay {
                 self.redo.clear();
                 self.drag = Drag::None;
             } else {
-                ctx.send_viewport_cmd(ViewportCommand::Close);
+                close_overlay(ctx);
             }
             return;
         }
@@ -862,13 +943,14 @@ impl Overlay {
         let bright = region.or(hover);
         match bright {
             Some(r) => {
-                p.rect_filled(Rect::from_min_max(screen.min, pos2(screen.max.x, r.min.y)), 0.0, DIM);
-                p.rect_filled(Rect::from_min_max(pos2(screen.min.x, r.max.y), screen.max), 0.0, DIM);
-                p.rect_filled(Rect::from_min_max(pos2(screen.min.x, r.min.y), pos2(r.min.x, r.max.y)), 0.0, DIM);
-                p.rect_filled(Rect::from_min_max(pos2(r.max.x, r.min.y), pos2(screen.max.x, r.max.y)), 0.0, DIM);
+                let dim = if region.is_some() { DIM } else { DIM_PICK };
+                p.rect_filled(Rect::from_min_max(screen.min, pos2(screen.max.x, r.min.y)), 0.0, dim);
+                p.rect_filled(Rect::from_min_max(pos2(screen.min.x, r.max.y), screen.max), 0.0, dim);
+                p.rect_filled(Rect::from_min_max(pos2(screen.min.x, r.min.y), pos2(r.min.x, r.max.y)), 0.0, dim);
+                p.rect_filled(Rect::from_min_max(pos2(r.max.x, r.min.y), pos2(screen.max.x, r.max.y)), 0.0, dim);
             }
             None => {
-                p.rect_filled(screen, 0.0, DIM);
+                p.rect_filled(screen, 0.0, DIM_PICK);
             }
         }
 
@@ -1075,135 +1157,94 @@ impl Overlay {
 
     // ---- export -----------------------------------------------------------
 
-    fn crop(&self, img: &ColorImage) -> Option<(u32, u32, Vec<u8>)> {
+    /// The selection as RGBA pixels with annotations burned in, rendered without touching the screen.
+    fn render_selection(&self) -> Option<(u32, u32, Vec<u8>)> {
         let sel = self.sel?;
-        let k = img.size[0] as f32 / self.screen.width().max(1.0);
-        let x0 = (((sel.min.x - self.screen.min.x) * k).round() as i32).clamp(0, img.size[0] as i32);
-        let y0 = (((sel.min.y - self.screen.min.y) * k).round() as i32).clamp(0, img.size[1] as i32);
-        let x1 = (((sel.max.x - self.screen.min.x) * k).round() as i32).clamp(0, img.size[0] as i32);
-        let y1 = (((sel.max.y - self.screen.min.y) * k).round() as i32).clamp(0, img.size[1] as i32);
+        let (fw, fh) = (self.frame.width as i32, self.frame.height as i32);
+        let k = self.frame.width as f32 / self.screen.width().max(1.0);
+        let px = |v: f32, o: f32, max: i32| (((v - o) * k).round() as i32).clamp(0, max);
+        let (x0, y0) = (px(sel.min.x, self.screen.min.x, fw), px(sel.min.y, self.screen.min.y, fh));
+        let (x1, y1) = (px(sel.max.x, self.screen.min.x, fw), px(sel.max.y, self.screen.min.y, fh));
         if x1 <= x0 || y1 <= y0 {
             return None;
         }
         let (w, h) = ((x1 - x0) as usize, (y1 - y0) as usize);
         let mut out = Vec::with_capacity(w * h * 4);
         for y in y0 as usize..y1 as usize {
-            for x in x0 as usize..x1 as usize {
-                let c = img.pixels[y * img.size[0] + x];
-                let [r, g, b, _] = c.to_array();
-                out.extend_from_slice(&[r, g, b, 255]);
+            let row = (y * fw as usize + x0 as usize) * 4;
+            for px in self.frame.rgba[row..row + w * 4].chunks_exact(4) {
+                out.extend_from_slice(&[px[0], px[1], px[2], 255]);
             }
+        }
+        if !self.shapes.is_empty() {
+            self.burn_annots(&mut out, w, h, k, (x0 as f32, y0 as f32), sel);
         }
         Some((w as u32, h as u32, out))
     }
 
-    fn drive_export(&mut self, ctx: &Context) {
-        let Some(ex) = self.export.as_ref() else { return };
-        let (stage, action, slot, save_state) = (ex.stage, ex.action, ex.slot.clone(), ex.save_state.clone());
-        let set_stage = |s: &mut Self, v: u8| {
-            if let Some(e) = s.export.as_mut() {
-                e.stage = v;
-            }
-        };
-        match stage {
-            0 => {
-                let c2 = ctx.clone();
-                ctx.send_viewport_cmd(ViewportCommand::Screenshot(ScreenshotCallback::new(move |img| {
-                    *slot.lock().unwrap() = Some(img);
-                    c2.request_repaint();
-                })));
-                set_stage(self, 1);
-                ctx.request_repaint();
-            }
-            1 => {
-                let got = slot.lock().unwrap().take();
-                let Some(img) = got else {
-                    ctx.request_repaint();
-                    return;
-                };
-                let Some((w, h, rgba)) = self.crop(&img) else {
-                    self.export = None;
-                    return;
-                };
-                match action {
-                    Action::Copy => {
-                        // Scripted dev runs write a file instead of touching the real clipboard.
-                        #[cfg(any(debug_assertions, feature = "devscript"))]
-                        let scripted = self.script.is_some() && std::env::var_os("CUTLINE_REAL_CLIPBOARD").is_none();
-                        #[cfg(not(any(debug_assertions, feature = "devscript")))]
-                        let scripted = false;
-                        if scripted {
-                            if let Some(im) = image::RgbaImage::from_raw(w, h, rgba) {
-                                let _ = im.save(crate::frame::temp_dir().join("export.png"));
-                            }
-                        } else if let Ok(mut cb) = arboard::Clipboard::new() {
-                            let _ = cb.set_image(arboard::ImageData { width: w as usize, height: h as usize, bytes: rgba.into() });
-                        }
-                        ctx.send_viewport_cmd(ViewportCommand::Close);
-                    }
-                    Action::Pin => {
-                        self.spawn_pin(w, h, rgba);
-                        ctx.send_viewport_cmd(ViewportCommand::Close);
-                    }
-                    Action::Save => {
-                        // Let the dialog appear above the overlay.
-                        ctx.send_viewport_cmd(ViewportCommand::WindowLevel(WindowLevel::Normal));
-                        let state = save_state.clone();
-                        set_stage(self, 2);
-                        let c2 = ctx.clone();
-                        std::thread::spawn(move || {
-                            let name = format!("Cutline_{}.png", chrono::Local::now().format("%Y%m%d_%H%M%S"));
-                            let mut dlg = rfd::FileDialog::new().set_file_name(name).add_filter("PNG image", &["png"]);
-                            if let Some(home) = std::env::var_os("USERPROFILE") {
-                                let pics = std::path::PathBuf::from(home).join("Pictures");
-                                if pics.is_dir() {
-                                    dlg = dlg.set_directory(pics);
-                                }
-                            }
-                            let saved = dlg.save_file().and_then(|mut path| {
-                                if path.extension().is_none() {
-                                    path.set_extension("png");
-                                }
-                                image::RgbaImage::from_raw(w, h, rgba).and_then(|im| im.save(path).ok())
-                            });
-                            state.store(if saved.is_some() { 1 } else { 2 }, Ordering::SeqCst);
-                            c2.request_repaint();
-                        });
-                    }
+    /// Draw the annotations into `out` (the cropped selection) via a headless egui context.
+    fn burn_annots(&self, out: &mut [u8], w: usize, h: usize, k: f32, offset_px: (f32, f32), sel: Rect) {
+        let ctx = Context::default();
+        ctx.add_font_provider(Arc::new(egui_system_font_provider::SystemFontProvider::new()));
+        ctx.set_pixels_per_point(k);
+
+        let has_mosaic = self.shapes.iter().any(|s| matches!(s, Annot::Mosaic { .. }));
+        let mosaic = has_mosaic.then(|| ctx.load_texture("mosaic", self.mosaic_image(), TextureOptions::NEAREST));
+        let mosaic_id = mosaic.as_ref().map(|t| t.id());
+
+        let mut texs = raster::Textures::default();
+        let mut shapes = Vec::new();
+        // Two passes: the first one lets egui load fonts (system CJK fallbacks) on demand.
+        for _ in 0..2 {
+            let mut input = egui::RawInput { screen_rect: Some(self.screen), ..Default::default() };
+            input.viewports.entry(egui::ViewportId::ROOT).or_default().native_pixels_per_point = Some(k);
+            let mut full = ctx.run_ui(input, |ui| {
+                let p = ui
+                    .ctx()
+                    .layer_painter(LayerId::new(Order::Foreground, Id::new("cutline_export")))
+                    .with_clip_rect(sel);
+                for s in &self.shapes {
+                    paint_annot(&p, s, mosaic_id, self.screen);
                 }
-            }
-            _ => match save_state.load(Ordering::SeqCst) {
-                1 => ctx.send_viewport_cmd(ViewportCommand::Close),
-                2 => {
-                    self.export = None;
-                    ctx.send_viewport_cmd(ViewportCommand::WindowLevel(WindowLevel::AlwaysOnTop));
-                    ctx.send_viewport_cmd(ViewportCommand::Focus);
-                }
-                _ => {}
-            },
+            });
+            texs.apply(&full.textures_delta);
+            full.textures_delta.clear();
+            shapes = std::mem::take(&mut full.shapes);
         }
+        let prims = ctx.tessellate(shapes, k);
+        raster::draw(out, w, h, k, (self.screen.min.x, self.screen.min.y), offset_px, &prims, &texs);
     }
 
-    fn spawn_pin(&self, w: u32, h: u32, rgba: Vec<u8>) {
-        let Some(sel) = self.sel else { return };
+    fn spawn_pin(&self, w: u32, h: u32, rgba: Vec<u8>) -> Option<std::process::Child> {
+        let sel = self.sel?;
         let path = crate::frame::temp_dir().join(format!("pin_{}.png", chrono::Local::now().format("%H%M%S%3f")));
-        let Some(im) = image::RgbaImage::from_raw(w, h, rgba) else { return };
+        let im = image::RgbaImage::from_raw(w, h, rgba)?;
         if im.save(&path).is_err() {
-            return;
+            return None;
         }
         let s = self.frame.scale;
         let pos = self.win_pos + sel.min.to_vec2();
-        if let Ok(exe) = std::env::current_exe() {
-            let _ = std::process::Command::new(exe)
+        let exe = std::env::current_exe().ok()?;
+        {
+            std::process::Command::new(exe)
                 .arg("--pin")
                 .arg(&path)
                 .arg(pos.x.to_string())
                 .arg(pos.y.to_string())
                 .arg((w as f32 / s).to_string())
                 .arg((h as f32 / s).to_string())
-                .spawn();
+                .stdout(std::process::Stdio::piped())
+                .spawn()
+                .ok()
         }
     }
+}
+
+/// Hide the window first so it vanishes instantly; tearing down the GL context afterwards would
+/// otherwise show as a flash of black/white.
+fn close_overlay(ctx: &Context) {
+    ctx.send_viewport_cmd(ViewportCommand::Visible(false));
+    ctx.send_viewport_cmd(ViewportCommand::Close);
 }
 
 impl eframe::App for Overlay {
@@ -1216,13 +1257,18 @@ impl eframe::App for Overlay {
         self.script_step(ctx, raw_input);
     }
 
-    fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.screen = ctx.content_rect();
         if self.frames == 0 {
+            crate::dwm::disable_transitions();
             ctx.send_viewport_cmd(ViewportCommand::Focus);
         }
         self.frames += 1;
+        if self.frames == 2 {
+            ctx.send_viewport_cmd(ViewportCommand::Visible(true));
+            ctx.send_viewport_cmd(ViewportCommand::Focus);
+        }
 
         if self.export.is_none() {
             self.handle_input(&ctx);
@@ -1236,17 +1282,14 @@ impl eframe::App for Overlay {
             Color32::WHITE,
         );
 
-        if self.export.is_some() {
-            // Clean frame: screenshot + annotations only, nothing else.
-            if let Some(sel) = self.sel {
-                self.paint_annots(&painter.with_clip_rect(sel));
-            }
-            self.drive_export(&ctx);
-        } else {
-            let pos = ctx.input(|i| i.pointer.latest_pos());
-            let fg = ctx.layer_painter(LayerId::new(Order::Middle, Id::new("cutline_fg")));
-            self.paint_chrome(&ctx, &fg, pos);
+        // The screen looks the same while a save dialog is open; only input is paused.
+        if let Some(job) = self.save_job.take() {
+            self.begin_save(&ctx, frame, job);
         }
+        self.poll_save(&ctx);
+        let pos = ctx.input(|i| i.pointer.latest_pos());
+        let fg = ctx.layer_painter(LayerId::new(Order::Middle, Id::new("cutline_fg")));
+        self.paint_chrome(&ctx, &fg, pos);
 
         // Keep the first frames flowing so the window settles quickly.
         if self.frames < 3 {

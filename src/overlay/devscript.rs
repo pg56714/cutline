@@ -11,6 +11,7 @@
 //! `sub <Kind|Width|Color> <n>`, `text <string>`, `esc`, `enter`, `ctrlz`, `ctrly`, `close`.
 
 use super::*;
+use eframe::egui::ScreenshotCallback;
 use std::collections::VecDeque;
 
 pub enum Op {

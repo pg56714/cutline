@@ -4,6 +4,7 @@
 #[cfg(target_os = "linux")]
 mod capture_x11;
 mod daemon;
+mod dwm;
 mod frame;
 mod overlay;
 mod pin;

@@ -12,6 +12,7 @@ struct Pin {
     px: (u32, u32),
     /// Current logical size.
     size: egui::Vec2,
+    frames: u32,
 }
 
 pub fn run(args: &[String]) {
@@ -33,6 +34,7 @@ pub fn run(args: &[String]) {
             .with_title("Cutline pin")
             .with_decorations(false)
             .with_always_on_top()
+            .with_visible(false) // shown once the first frame is painted: no white flash
             .with_taskbar(false)
             .with_position(pos2(x, y))
             .with_inner_size(vec2(w, h)),
@@ -45,7 +47,7 @@ pub fn run(args: &[String]) {
         Box::new(move |cc| {
             let ci = ColorImage::from_rgba_unmultiplied([pw as usize, ph as usize], &rgba);
             let tex = cc.egui_ctx.load_texture("pin", ci, TextureOptions::LINEAR);
-            Ok(Box::new(Pin { tex, rgba, px: (pw, ph), size: vec2(w, h) }))
+            Ok(Box::new(Pin { tex, rgba, px: (pw, ph), size: vec2(w, h), frames: 0 }))
         }),
     );
 }
@@ -61,6 +63,23 @@ impl eframe::App for Pin {
         let p = ctx.layer_painter(egui::LayerId::background());
         p.image(self.tex.id(), rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
         p.rect_stroke(rect, 0.0, Stroke::new(1.0, Color32::from_rgb(30, 136, 229)), StrokeKind::Inside);
+
+        // Tell the overlay that spawned us that the image is on screen, so it can step aside.
+        if self.frames == 0 {
+            crate::dwm::disable_transitions();
+        }
+        self.frames += 1;
+        if self.frames == 2 {
+            ctx.send_viewport_cmd(ViewportCommand::Visible(true));
+        }
+        if self.frames == 3 {
+            use std::io::Write;
+            let _ = writeln!(std::io::stdout(), "ready");
+            let _ = std::io::stdout().flush();
+        }
+        if self.frames < 3 {
+            ctx.request_repaint();
+        }
 
         let (esc, copy, pressed, secondary, double, scroll) = ctx.input(|i| {
             (
