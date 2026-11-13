@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.3.0 (2026-11-13)
+
+### Features
+
+- **overlay:** redraw the toolbar, add tooltips, polish the text box ([e104f71](https://github.com/pg56714/cutline/commit/e104f71af9151c8dd6a2ad833f09160ba8aa014d))
+
+### Fixes
+
+- **overlay:** avoid exclusive full screen (flash on copy / save / pin) ([537f16f](https://github.com/pg56714/cutline/commit/537f16fc561865c0dcb8e25af37bc7683038eabf))
+- **pin:** outline on all four sides, square corners, exact position ([03d067a](https://github.com/pg56714/cutline/commit/03d067a0bed57958cc19bbb86f40287137dfaa3d))
+- **overlay:** visible, resizable text box ([81f098b](https://github.com/pg56714/cutline/commit/81f098b5195736fe84afcb8b72595f7689e34ec5))
+
 ## v0.2.0 (2026-11-11)
 
 ### Features
