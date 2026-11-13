@@ -21,10 +21,25 @@ mod devscript;
 mod raster;
 
 const ACCENT: Color32 = Color32::from_rgb(30, 136, 229);
-const BAR_BG: Color32 = Color32::from_rgb(247, 247, 247);
-const BAR_LINE: Color32 = Color32::from_rgb(205, 205, 205);
-const ICON: Color32 = Color32::from_rgb(70, 70, 70);
-const ICON_OFF: Color32 = Color32::from_rgb(185, 185, 185);
+const DANGER: Color32 = Color32::from_rgb(217, 48, 37);
+// Toolbar panels: a white card with a hairline edge and a soft shadow.
+const BAR_BG: Color32 = Color32::from_rgb(252, 252, 253);
+const BAR_EDGE: Color32 = Color32::from_rgba_premultiplied(0, 0, 0, 46);
+const BAR_SEP: Color32 = Color32::from_rgb(224, 227, 231);
+const BTN_HOVER: Color32 = Color32::from_rgb(236, 239, 243);
+const BTN_PRESS: Color32 = Color32::from_rgb(222, 226, 232);
+const BTN_ON: Color32 = Color32::from_rgb(222, 237, 253);
+const ICON: Color32 = Color32::from_rgb(60, 64, 72);
+const ICON_OFF: Color32 = Color32::from_rgb(190, 194, 201);
+const BAR_RADIUS: f32 = 8.0;
+const BTN_RADIUS: f32 = 6.0;
+/// Padding inside a toolbar panel, and the gap between the two panels.
+const BAR_PAD: f32 = 4.0;
+const SUB_GAP: f32 = 6.0;
+/// Dark chips: the tooltip and the size label.
+const TIP_BG: Color32 = Color32::from_rgba_premultiplied(27, 29, 33, 240);
+/// Seconds the pointer rests on a button before its tooltip shows.
+const TIP_DELAY: f64 = 0.45;
 // Snipaste-like: a light veil while picking, a darker one once a region is being dragged / selected.
 const DIM_PICK: Color32 = Color32::from_rgba_premultiplied(0, 0, 0, 70);
 const DIM: Color32 = Color32::from_rgba_premultiplied(0, 0, 0, 145);
@@ -100,6 +115,8 @@ enum Drag {
     Erase,
     /// Dragging the text box's right-edge handle; `grab` = pointer x minus the box's right edge.
     TextWidth { grab: f32 },
+    /// Dragging the text box by its frame; `grab` = pointer minus the text origin.
+    TextMove { grab: Vec2 },
 }
 
 struct Editing {
@@ -107,12 +124,19 @@ struct Editing {
     text: String,
     c: Color32,
     size: f32,
-    /// Wrap width in points; adjustable by dragging the box's right edge.
-    width: f32,
+    /// Wrap width in points once the right edge has been dragged. `None`: the box hugs the text
+    /// and wraps where the selection ends.
+    width: Option<f32>,
+    /// Width of the text as last laid out; sizes the hugging box.
+    fit: f32,
 }
 
 const TEXT_MIN_W: f32 = 40.0;
-const TEXT_DEFAULT_W: f32 = 180.0;
+
+/// The one layout used for text everywhere (editor, overlay, export), so what is typed is what is kept.
+fn text_job(text: &str, size: f32, c: Color32, wrap: f32) -> egui::text::LayoutJob {
+    egui::text::LayoutJob::simple(text.to_owned(), FontId::proportional(size), c, wrap)
+}
 
 /// A save dialog is open (it runs on its own thread).
 struct Export {
@@ -148,6 +172,15 @@ struct Overlay {
     cur: Option<Annot>,
     editing: Option<Editing>,
     edit_rect: Rect,
+
+    /// Toolbar button under the pointer, since when (input time), and whether a press hid its tooltip.
+    tip: Option<Btn>,
+    tip_since: f64,
+    tip_muted: bool,
+    /// A tooltip is on screen / the input time the last one went away: sliding on to the next
+    /// button then shows its tooltip without the delay.
+    tip_live: bool,
+    tip_seen: f64,
 
     export: Option<Export>,
     save_job: Option<(u32, u32, Vec<u8>)>,
@@ -220,6 +253,11 @@ impl Overlay {
             cur: None,
             editing: None,
             edit_rect: Rect::NOTHING,
+            tip: None,
+            tip_since: 0.0,
+            tip_muted: false,
+            tip_live: false,
+            tip_seen: f64::NEG_INFINITY,
             export: None,
             save_job: None,
             frames: 0,
@@ -284,27 +322,32 @@ impl Overlay {
         const BH: f32 = 32.0;
         const SW: f32 = 9.0;
         let items = Self::bar_items();
-        let total: f32 = items.iter().map(|b| if *b == Btn::Sep { SW } else { BW }).sum::<f32>() + 8.0;
-        let h = BH + 6.0;
+        let total: f32 = items.iter().map(|b| if *b == Btn::Sep { SW } else { BW }).sum::<f32>() + BAR_PAD * 2.0;
+        let h = BH + BAR_PAD * 2.0;
+        // Room the options row needs on the far side of the bar.
+        let sub = SUB_GAP + Self::SUB_CELL + BAR_PAD * 2.0 + 4.0;
         let x = (sel.max.x - total).clamp(self.screen.min.x + 4.0, (self.screen.max.x - total - 4.0).max(self.screen.min.x));
-        let below = sel.max.y + 8.0 + h + 40.0 <= self.screen.max.y;
+        let below = sel.max.y + 8.0 + h + sub <= self.screen.max.y;
         let y = if below {
             sel.max.y + 8.0
-        } else if sel.min.y - 8.0 - h - 40.0 >= self.screen.min.y {
+        } else if sel.min.y - 8.0 - h - sub >= self.screen.min.y {
             sel.min.y - 8.0 - h
         } else {
             (sel.max.y - h - 8.0).max(self.screen.min.y + 4.0)
         };
         let bar = Rect::from_min_size(pos2(x, y), vec2(total, h));
-        let mut cx = x + 4.0;
+        let mut cx = x + BAR_PAD;
         let mut out = Vec::new();
         for b in items {
             let w = if b == Btn::Sep { SW } else { BW };
-            out.push((Rect::from_min_size(pos2(cx, y + 3.0), vec2(w, BH)), b));
+            out.push((Rect::from_min_size(pos2(cx, y + BAR_PAD), vec2(w, BH)), b));
             cx += w;
         }
         (bar, out, below)
     }
+
+    /// Side of one cell in the options row.
+    const SUB_CELL: f32 = 26.0;
 
     fn sub_items(&self) -> Vec<Sub> {
         let mut v = Vec::new();
@@ -336,18 +379,18 @@ impl Overlay {
         if items.is_empty() {
             return None;
         }
-        const C: f32 = 26.0;
-        const S: f32 = 9.0;
-        let total: f32 = items.iter().map(|s| if *s == Sub::Sep { S } else { C }).sum::<f32>() + 8.0;
-        let h = C + 6.0;
+        const C: f32 = Overlay::SUB_CELL;
+        const S: f32 = 11.0;
+        let total: f32 = items.iter().map(|s| if *s == Sub::Sep { S } else { C }).sum::<f32>() + BAR_PAD * 2.0;
+        let h = C + BAR_PAD * 2.0;
         let x = bar.min.x.min(self.screen.max.x - total - 4.0).max(self.screen.min.x + 4.0);
-        let y = if below { bar.max.y + 4.0 } else { bar.min.y - 4.0 - h };
+        let y = if below { bar.max.y + SUB_GAP } else { bar.min.y - SUB_GAP - h };
         let rect = Rect::from_min_size(pos2(x, y), vec2(total, h));
-        let mut cx = x + 4.0;
+        let mut cx = x + BAR_PAD;
         let mut out = Vec::new();
         for s in items {
             let w = if s == Sub::Sep { S } else { C };
-            out.push((Rect::from_min_size(pos2(cx, y + 3.0), vec2(w, C)), s));
+            out.push((Rect::from_min_size(pos2(cx, y + BAR_PAD), vec2(w, C)), s));
             cx += w;
         }
         Some((rect, out))
@@ -375,24 +418,37 @@ impl Overlay {
         }
     }
 
-    /// Grab zone for resizing the text box: a strip just right of (and slightly over) its edge.
+    /// Grab zone for resizing the text box: a strip over its right edge and the handle on it.
     fn text_handle(&self) -> Rect {
         let r = self.edit_rect;
-        Rect::from_min_max(pos2(r.max.x - 1.0, r.min.y - 3.0), pos2(r.max.x + 11.0, r.max.y + 3.0))
+        Rect::from_min_max(pos2(r.max.x + 1.0, r.min.y - 4.0), pos2(r.max.x + 11.0, r.max.y + 4.0))
+    }
+
+    /// Grab zone for moving the text box: a band over the rest of its frame.
+    fn text_move_zone(&self, p: Pos2) -> bool {
+        let r = self.edit_rect;
+        r.expand(9.0).contains(p) && !r.expand(1.0).contains(p) && !self.text_handle().contains(p)
+    }
+
+    /// How wide text starting at `pos` may run: up to the selection's right edge, where it is cut off anyway.
+    fn text_max_w(&self, pos: Pos2) -> f32 {
+        let right = self.sel.map_or(self.screen.max.x, |s| s.max.x);
+        (right - pos.x - 4.0).max(TEXT_MIN_W)
     }
 
     fn commit_text(&mut self, ctx: &Context) {
+        if matches!(self.drag, Drag::TextWidth { .. } | Drag::TextMove { .. }) {
+            self.drag = Drag::None;
+        }
         if let Some(e) = self.editing.take() {
-            if !e.text.trim().is_empty() {
-                let galley = ctx.layer_painter(LayerId::background()).layout(
-                    e.text.clone(),
-                    FontId::proportional(e.size),
-                    e.c,
-                    e.width,
-                );
+            let text = e.text.trim_end();
+            if !text.is_empty() {
+                let max_w = self.text_max_w(e.pos);
+                let wrap = e.width.map_or(max_w, |w| w.min(max_w));
+                let galley = ctx.layer_painter(LayerId::background()).layout_job(text_job(text, e.size, e.c, wrap));
                 let bounds = Rect::from_min_size(e.pos, galley.size());
                 self.push_history();
-                self.shapes.push(Annot::Text { pos: e.pos, text: e.text, c: e.c, size: e.size, wrap: e.width, bounds });
+                self.shapes.push(Annot::Text { pos: e.pos, text: text.to_owned(), c: e.c, size: e.size, wrap, bounds });
             }
         }
     }
@@ -475,8 +531,13 @@ impl Overlay {
                 self.drag = Drag::Draw { start: p };
             }
             Tool::Text => {
-                self.editing = Some(Editing { pos: p, text: String::new(), c, size: TEXT_SIZES[self.size_idx], width: TEXT_DEFAULT_W });
-                self.edit_rect = Rect::from_min_size(p, vec2(4.0, 4.0));
+                // The click is where the caret goes: centre the first line on it.
+                let size = TEXT_SIZES[self.size_idx];
+                let row = ctx.fonts_mut(|f| f.row_height(&FontId::proportional(size)));
+                let top = self.sel.map_or(self.screen.min.y, |s| s.min.y);
+                let pos = pos2(p.x, (p.y - row * 0.5).round().max(top));
+                self.editing = Some(Editing { pos, text: String::new(), c, size, width: None, fit: 0.0 });
+                self.edit_rect = Rect::from_min_size(pos, vec2(TEXT_MIN_W, row));
                 self.drag = Drag::None;
             }
             Tool::Eraser => {
@@ -686,6 +747,65 @@ impl Overlay {
             (Sub::Color(i), _) => self.color_idx = i,
             _ => {}
         }
+        // The text being typed follows the size and colour picked while typing it.
+        if let Some(e) = self.editing.as_mut() {
+            e.c = PALETTE[self.color_idx];
+            e.size = TEXT_SIZES[self.size_idx];
+        }
+    }
+
+    /// The primary button went down at `p`.
+    fn on_press(&mut self, ctx: &Context, p: Pos2) {
+        self.press_btn = None;
+        self.press_sub = None;
+        if let Some(origin) = self.editing.as_ref().map(|e| e.pos) {
+            if self.text_handle().contains(p) {
+                self.drag = Drag::TextWidth { grab: p.x - self.edit_rect.max.x };
+                return;
+            }
+            if self.text_move_zone(p) {
+                self.drag = Drag::TextMove { grab: p - origin };
+                return;
+            }
+            if self.edit_rect.expand(1.0).contains(p) {
+                return; // inside the editor: egui places the caret
+            }
+            // A press anywhere else finishes the text. On the toolbar it then counts as a normal
+            // press; on the options row the text stays open and takes the new size / colour.
+            let (on_bar, on_sub) = self.sel.map_or((false, false), |sel| {
+                let (bar, _, below) = self.layout_bar(sel);
+                (bar.contains(p), self.layout_sub(bar, below).is_some_and(|(r, _)| r.contains(p)))
+            });
+            if !on_sub {
+                self.commit_text(ctx);
+                if !on_bar {
+                    return;
+                }
+            }
+        }
+        match self.sel {
+            None => self.drag = Drag::NewSel { start: p },
+            Some(sel) => {
+                let (bar, btns, below) = self.layout_bar(sel);
+                let sub = self.layout_sub(bar, below);
+                if let Some((_, b)) = btns.iter().find(|(r, b)| *b != Btn::Sep && r.contains(p)) {
+                    self.press_btn = Some(*b);
+                } else if let Some((_, items)) = &sub {
+                    self.press_sub = items.iter().find(|(r, s)| *s != Sub::Sep && r.contains(p)).map(|(_, s)| *s);
+                }
+                let on_bar = bar.contains(p) || sub.as_ref().map(|(r, _)| r.contains(p)).unwrap_or(false);
+                if !on_bar {
+                    if let Some(h) = Self::handle_at(sel, p) {
+                        self.drag = Drag::Resize { h, orig: sel };
+                    } else if sel.contains(p) {
+                        match self.tool {
+                            None => self.drag = Drag::Move { grab: p - sel.min },
+                            Some(t) => self.begin_draw(ctx, t, Self::clamp_to(sel, p)),
+                        }
+                    }
+                }
+            }
+        }
     }
 
     fn handle_input(&mut self, ctx: &Context) {
@@ -790,39 +910,7 @@ impl Overlay {
 
         // --- press ---
         if i.pressed {
-            self.press_btn = None;
-            self.press_sub = None;
-            if self.editing.is_some() {
-                if self.text_handle().contains(p) {
-                    self.drag = Drag::TextWidth { grab: p.x - self.edit_rect.max.x };
-                } else if !self.edit_rect.expand(4.0).contains(p) {
-                    self.commit_text(ctx);
-                }
-                return;
-            }
-            match self.sel {
-                None => self.drag = Drag::NewSel { start: p },
-                Some(sel) => {
-                    let (bar, btns, below) = self.layout_bar(sel);
-                    let sub = self.layout_sub(bar, below);
-                    if let Some((_, b)) = btns.iter().find(|(r, b)| *b != Btn::Sep && r.contains(p)) {
-                        self.press_btn = Some(*b);
-                    } else if let Some((_, items)) = &sub {
-                        self.press_sub = items.iter().find(|(r, s)| *s != Sub::Sep && r.contains(p)).map(|(_, s)| *s);
-                    }
-                    let on_bar = bar.contains(p) || sub.as_ref().map(|(r, _)| r.contains(p)).unwrap_or(false);
-                    if !on_bar {
-                        if let Some(h) = Self::handle_at(sel, p) {
-                            self.drag = Drag::Resize { h, orig: sel };
-                        } else if sel.contains(p) {
-                            match self.tool {
-                                None => self.drag = Drag::Move { grab: p - sel.min },
-                                Some(t) => self.begin_draw(ctx, t, Self::clamp_to(sel, p)),
-                            }
-                        }
-                    }
-                }
-            }
+            self.on_press(ctx, p);
         }
 
         // --- drag ---
@@ -857,9 +945,22 @@ impl Overlay {
                 Drag::Erase => self.erase_at(p),
                 Drag::TextWidth { grab } => {
                     let grab = *grab;
-                    if let Some(e) = self.editing.as_mut() {
-                        let max_w = (self.screen.max.x - e.pos.x - 12.0).max(TEXT_MIN_W);
-                        e.width = (p.x - grab - e.pos.x).clamp(TEXT_MIN_W, max_w);
+                    if let Some(origin) = self.editing.as_ref().map(|e| e.pos) {
+                        let max_w = self.text_max_w(origin);
+                        if let Some(e) = self.editing.as_mut() {
+                            e.width = Some((p.x - grab - origin.x).clamp(TEXT_MIN_W, max_w));
+                        }
+                    }
+                }
+                Drag::TextMove { grab } => {
+                    let grab = *grab;
+                    if let (Some(e), Some(sel)) = (self.editing.as_mut(), self.sel) {
+                        // Keep the first line and at least a minimal width inside the selection.
+                        let q = p - grab;
+                        e.pos = pos2(
+                            q.x.clamp(sel.min.x, (sel.max.x - TEXT_MIN_W).max(sel.min.x)),
+                            q.y.clamp(sel.min.y, (sel.max.y - e.size).max(sel.min.y)),
+                        );
                     }
                 }
                 Drag::None => {}
@@ -915,10 +1016,14 @@ impl Overlay {
         }
 
         // --- cursor ---
-        let on_text_handle = self.editing.is_some() && self.text_handle().contains(p);
+        let editing = self.editing.is_some();
+        let on_text_handle = editing && self.text_handle().contains(p);
+        let on_text_frame = editing && self.text_move_zone(p);
         let icon = match (&self.drag, self.sel) {
             (Drag::TextWidth { .. }, _) => CursorIcon::ResizeHorizontal,
+            (Drag::TextMove { .. }, _) => CursorIcon::Move,
             _ if on_text_handle => CursorIcon::ResizeHorizontal,
+            _ if on_text_frame => CursorIcon::Move,
             (Drag::Move { .. }, _) => CursorIcon::Grabbing,
             (_, None) => CursorIcon::Crosshair,
             (_, Some(sel)) => {
@@ -999,7 +1104,7 @@ impl Overlay {
             let size = galley.size() + vec2(12.0, 6.0);
             let y = if r.min.y - size.y - 4.0 >= screen.min.y { r.min.y - size.y - 4.0 } else { r.min.y + 4.0 };
             let lr = Rect::from_min_size(pos2(r.min.x.max(screen.min.x), y), size);
-            p.rect_filled(lr, 3.0, Color32::from_black_alpha(190));
+            p.rect_filled(lr, 4.0, TIP_BG);
             p.galley(lr.min + vec2(6.0, 3.0), galley, Color32::WHITE);
         }
 
@@ -1019,7 +1124,7 @@ impl Overlay {
                     p.rect_stroke(hr, 0.0, Stroke::new(1.0, ACCENT), StrokeKind::Inside);
                 }
             }
-            self.paint_bars(p, pos, sel);
+            self.paint_bars(ctx, p, pos, sel);
         }
 
         // Magnifier while picking.
@@ -1030,57 +1135,85 @@ impl Overlay {
         }
 
         // Text being typed.
-        let mut commit = false;
-        if let Some(e) = self.editing.as_mut() {
-            let font = FontId::proportional(e.size);
-            let color = e.c;
-            let area = egui::Area::new(Id::new("cutline_text"))
-                .order(Order::Foreground)
-                .fixed_pos(e.pos)
-                .show(ctx, |ui| {
-                    let te = egui::TextEdit::multiline(&mut e.text)
-                        .font(font)
-                        .text_color(color)
-                        .frame(egui::Frame::NONE)
-                        .desired_width(e.width)
-                        .desired_rows(1)
-                        .lock_focus(true);
-                    // The Area's max width is last frame's size, so give the editor its own width.
-                    let r = ui.allocate_ui(vec2(e.width, 0.0), |ui| ui.add(te)).inner;
-                    r.request_focus();
-                    r.rect
-                });
-            let text_rect = area.inner;
-            self.edit_rect = text_rect;
-            let box_rect = text_rect.expand(3.0);
-            p.rect_filled(box_rect, 2.0, Color32::from_rgba_unmultiplied(0, 0, 0, 90));
-            p.rect_stroke(box_rect, 2.0, Stroke::new(1.5, ACCENT), StrokeKind::Outside);
-            let active = matches!(self.drag, Drag::TextWidth { .. });
-            let hc = if active { Color32::WHITE } else { ACCENT };
-            let hh = 18.0f32.min(box_rect.height());
-            p.rect_filled(
-                Rect::from_center_size(pos2(text_rect.max.x + 6.0, text_rect.center().y), vec2(4.0, hh)),
-                2.0,
-                hc,
-            );
-            if ctx.input(|i| i.modifiers.command && i.key_pressed(Key::Enter)) {
-                commit = true;
-            }
+        if let Some(max_w) = self.editing.as_ref().map(|e| self.text_max_w(e.pos)) {
+            self.paint_editor(ctx, p, max_w);
         }
-        if commit {
+    }
+
+    /// The text being typed: a bare editor with the frame and its width handle drawn around it.
+    fn paint_editor(&mut self, ctx: &Context, p: &Painter, max_w: f32) {
+        let Some(e) = self.editing.as_mut() else { return };
+        let (size, color) = (e.size, e.c);
+        let wrap = e.width.map_or(max_w, |w| w.min(max_w));
+        // Until its edge is dragged the box hugs the text, with room for the next character.
+        let box_w = match e.width {
+            Some(_) => wrap,
+            None => (e.fit + size).clamp((size * 2.5).max(TEXT_MIN_W), max_w),
+        };
+        let mut layouter = |ui: &Ui, buf: &dyn egui::TextBuffer, _: f32| {
+            let mut job = text_job(buf.as_str(), size, color, wrap);
+            job.keep_trailing_whitespace = true; // or a typed space would not move the caret
+            ui.painter().layout_job(job)
+        };
+        let area = egui::Area::new(Id::new("cutline_text"))
+            .order(Order::Foreground)
+            .fixed_pos(e.pos)
+            .show(ctx, |ui| {
+                let te = egui::TextEdit::multiline(&mut e.text)
+                    .font(FontId::proportional(size))
+                    .text_color(color)
+                    .frame(egui::Frame::NONE)
+                    .desired_width(box_w)
+                    .desired_rows(1)
+                    .lock_focus(true)
+                    .layouter(&mut layouter);
+                // The Area's max width is last frame's size, so give the editor its own width.
+                let out = ui.allocate_ui(vec2(box_w, 0.0), |ui| te.show(ui)).inner;
+                out.response.request_focus();
+                (out.response.rect, out.galley.size().x)
+            });
+        let (text_rect, fit) = area.inner;
+        if (fit - e.fit).abs() > 0.5 {
+            ctx.request_repaint(); // the hugging box catches up with the text on the next frame
+        }
+        e.fit = fit;
+        self.edit_rect = text_rect;
+
+        let frame = text_rect.expand(3.0);
+        p.rect_stroke(frame, 2.0, Stroke::new(1.0, ACCENT), StrokeKind::Outside);
+        // The width handle looks like the selection's handles.
+        let held = matches!(self.drag, Drag::TextWidth { .. });
+        let hr = Rect::from_min_size(pos2((frame.max.x - 3.0).round(), (frame.center().y - 3.5).round()), vec2(7.0, 7.0));
+        p.rect_filled(hr, 0.0, if held { ACCENT } else { Color32::WHITE });
+        p.rect_stroke(hr, 0.0, Stroke::new(1.0, ACCENT), StrokeKind::Inside);
+
+        if ctx.input(|i| i.modifiers.command && i.key_pressed(Key::Enter)) {
             self.commit_text(ctx);
         }
     }
 
-    fn paint_bars(&self, p: &Painter, pos: Option<Pos2>, sel: Rect) {
+    /// One toolbar card: soft shadow, white face, hairline edge.
+    fn paint_panel(p: &Painter, r: Rect) {
+        use egui::epaint::Shadow;
+        p.add(Shadow { offset: [0, 6], blur: 18, spread: 0, color: Color32::from_black_alpha(56) }.as_shape(r, BAR_RADIUS));
+        p.add(Shadow { offset: [0, 1], blur: 4, spread: 0, color: Color32::from_black_alpha(48) }.as_shape(r, BAR_RADIUS));
+        p.rect_filled(r, BAR_RADIUS, BAR_BG);
+        p.rect_stroke(r, BAR_RADIUS, Stroke::new(1.0, BAR_EDGE), StrokeKind::Outside);
+    }
+
+    fn paint_bars(&mut self, ctx: &Context, p: &Painter, pos: Option<Pos2>, sel: Rect) {
         let (bar, btns, below) = self.layout_bar(sel);
-        p.rect_filled(bar.translate(vec2(0.0, 1.5)), 3.0, Color32::from_black_alpha(40));
-        p.rect_filled(bar, 3.0, BAR_BG);
-        p.rect_stroke(bar, 3.0, Stroke::new(1.0, BAR_LINE), StrokeKind::Inside);
+        // Nothing lights up under the pointer while it is busy dragging something else.
+        let idle = matches!(self.drag, Drag::None) && self.export.is_none();
+        let over = |r: &Rect| idle && pos.is_some_and(|q| r.contains(q));
+        let down = ctx.input(|i| i.pointer.primary_down());
+
+        Self::paint_panel(p, bar);
+        let mut hot = None;
         for (r, b) in &btns {
             if *b == Btn::Sep {
                 let x = r.center().x;
-                p.line_segment([pos2(x, r.min.y + 6.0), pos2(x, r.max.y - 6.0)], Stroke::new(1.0, BAR_LINE));
+                p.line_segment([pos2(x, r.min.y + 7.0), pos2(x, r.max.y - 7.0)], Stroke::new(1.0, BAR_SEP));
                 continue;
             }
             let active = matches!(b, Btn::Tool(t) if Some(*t) == self.tool);
@@ -1089,37 +1222,61 @@ impl Overlay {
                 Btn::Redo => !self.redo.is_empty(),
                 _ => true,
             };
-            let hovered = enabled && pos.map(|q| r.contains(q)).unwrap_or(false);
-            if hovered || active {
-                p.rect_filled(r.shrink(1.0), 3.0, if active { Color32::from_rgb(220, 235, 250) } else { Color32::from_rgb(232, 232, 232) });
+            let hovered = over(r);
+            if hovered {
+                hot = Some((*b, *r));
             }
-            let col = if !enabled { ICON_OFF } else if active { ACCENT } else { ICON };
-            draw_icon(p, *b, r.center(), col);
+            let bg = if active {
+                BTN_ON
+            } else if !(hovered && enabled) {
+                BAR_BG
+            } else if down && self.press_btn == Some(*b) {
+                BTN_PRESS
+            } else {
+                BTN_HOVER
+            };
+            if bg != BAR_BG {
+                p.rect_filled(r.shrink2(vec2(1.0, 0.0)), BTN_RADIUS, bg);
+            }
+            let col = if !enabled {
+                ICON_OFF
+            } else if active {
+                ACCENT
+            } else if hovered && *b == Btn::Close {
+                DANGER
+            } else {
+                ICON
+            };
+            draw_icon(p, *b, r.center(), col, bg);
         }
 
+        // The tooltip goes past both panels, so it never covers the options row.
+        let mut panels = bar;
         if let Some((rect, items)) = self.layout_sub(bar, below) {
-            p.rect_filled(rect.translate(vec2(0.0, 1.5)), 3.0, Color32::from_black_alpha(40));
-            p.rect_filled(rect, 3.0, BAR_BG);
-            p.rect_stroke(rect, 3.0, Stroke::new(1.0, BAR_LINE), StrokeKind::Inside);
+            panels = panels.union(rect);
+            Self::paint_panel(p, rect);
             for (r, s) in items {
                 let c = r.center();
+                let hovered = over(&r);
+                // Background of a chosen / hovered option; returns the colour to draw it in.
+                let cell = |on: bool| {
+                    let bg = if on { BTN_ON } else if hovered { BTN_HOVER } else { BAR_BG };
+                    if bg != BAR_BG {
+                        p.rect_filled(r.shrink(1.0), 5.0, bg);
+                    }
+                    if on { ACCENT } else { ICON }
+                };
                 match s {
                     Sub::Sep => {
-                        p.line_segment([pos2(c.x, r.min.y + 5.0), pos2(c.x, r.max.y - 5.0)], Stroke::new(1.0, BAR_LINE));
+                        p.line_segment([pos2(c.x, r.min.y + 6.0), pos2(c.x, r.max.y - 6.0)], Stroke::new(1.0, BAR_SEP));
                     }
                     Sub::Kind(k) => {
-                        let on = match self.tool {
-                            Some(Tool::Shape) => (k == 1) == self.shape_ellipse,
-                            _ => (k == 1) == self.arrow_line,
-                        };
-                        if on {
-                            p.rect_filled(r.shrink(1.0), 3.0, Color32::from_rgb(220, 235, 250));
-                        }
-                        let col = if on { ACCENT } else { ICON };
+                        let shape = self.tool == Some(Tool::Shape);
+                        let col = cell((k == 1) == if shape { self.shape_ellipse } else { self.arrow_line });
                         let st = Stroke::new(1.6, col);
-                        if self.tool == Some(Tool::Shape) {
+                        if shape {
                             if k == 0 {
-                                p.rect_stroke(Rect::from_center_size(c, vec2(14.0, 10.0)), 1.0, st, StrokeKind::Middle);
+                                p.rect_stroke(Rect::from_center_size(c, vec2(14.0, 10.0)), 1.5, st, StrokeKind::Middle);
                             } else {
                                 p.add(Shape::ellipse_stroke(c, vec2(7.0, 5.0), st));
                             }
@@ -1130,27 +1287,73 @@ impl Overlay {
                         }
                     }
                     Sub::Width(i) => {
-                        let on = if self.tool == Some(Tool::Text) { i == self.size_idx } else { i == self.width_idx };
-                        if on {
-                            p.rect_filled(r.shrink(1.0), 3.0, Color32::from_rgb(220, 235, 250));
-                        }
-                        if self.tool == Some(Tool::Text) {
-                            let f = [11.0, 15.0, 19.0][i];
-                            p.text(c, Align2::CENTER_CENTER, "A", FontId::proportional(f), if on { ACCENT } else { ICON });
+                        let text = self.tool == Some(Tool::Text);
+                        let col = cell(i == if text { self.size_idx } else { self.width_idx });
+                        if text {
+                            p.text(c, Align2::CENTER_CENTER, "A", FontId::proportional([11.0, 15.0, 19.0][i]), col);
                         } else {
-                            p.circle_filled(c, 2.0 + i as f32 * 1.6, if on { ACCENT } else { ICON });
+                            p.circle_filled(c, 2.0 + i as f32 * 1.6, col);
                         }
                     }
                     Sub::Color(i) => {
                         let on = i == self.color_idx;
-                        p.circle_filled(c, 8.0, PALETTE[i]);
-                        p.circle_stroke(c, 8.0, Stroke::new(1.0, Color32::from_gray(150)));
+                        let rad = if on || hovered { 8.0 } else { 7.0 };
+                        p.circle_filled(c, rad, PALETTE[i]);
+                        p.circle_stroke(c, rad, Stroke::new(1.0, Color32::from_black_alpha(46)));
                         if on {
                             p.circle_stroke(c, 11.0, Stroke::new(1.8, ACCENT));
                         }
                     }
                 }
             }
+        }
+
+        self.paint_tip(ctx, hot, panels, below);
+    }
+
+    /// Tooltip for the toolbar button the pointer rests on (`hot`), on the far side of the `panels`.
+    fn paint_tip(&mut self, ctx: &Context, hot: Option<(Btn, Rect)>, panels: Rect, below: bool) {
+        let (now, down) = ctx.input(|i| (i.time, i.pointer.any_down()));
+        let was_live = std::mem::replace(&mut self.tip_live, false);
+        let b = hot.map(|(b, _)| b);
+        if b != self.tip {
+            if was_live {
+                self.tip_seen = now;
+            }
+            self.tip = b;
+            self.tip_muted = false;
+            self.tip_since = if now - self.tip_seen < 0.3 { now - TIP_DELAY } else { now };
+        }
+        // A press hides the tooltip until the pointer moves on to another button.
+        self.tip_muted |= down;
+        let Some((b, r)) = hot else { return };
+        if self.tip_muted {
+            return;
+        }
+        let wait = TIP_DELAY - (now - self.tip_since);
+        if wait > 1e-3 {
+            ctx.request_repaint_after_secs(wait as f32);
+            return;
+        }
+        self.tip_live = true;
+
+        let (label, key) = btn_tip(b);
+        let tp = ctx.layer_painter(LayerId::new(Order::Tooltip, Id::new("cutline_tip")));
+        let font = FontId::proportional(12.0);
+        let name = tp.layout_no_wrap(label.to_owned(), font.clone(), Color32::WHITE);
+        let keys = (!key.is_empty()).then(|| tp.layout_no_wrap(key.to_owned(), font, Color32::from_gray(165)));
+        let w = name.size().x + keys.as_ref().map_or(0.0, |g| g.size().x + 8.0) + 18.0;
+        let h = name.size().y + 10.0;
+        let left = self.screen.min.x + 4.0;
+        let x = (r.center().x - w * 0.5).round().clamp(left, (self.screen.max.x - w - 4.0).max(left));
+        let y = if below { panels.max.y + 6.0 } else { panels.min.y - 6.0 - h };
+        let tr = Rect::from_min_size(pos2(x, y), vec2(w, h));
+        tp.rect_filled(tr, 6.0, TIP_BG);
+        let at = pos2(tr.min.x + 9.0, tr.min.y + 5.0);
+        let next = at.x + name.size().x + 8.0;
+        tp.galley(at, name, Color32::WHITE);
+        if let Some(g) = keys {
+            tp.galley(pos2(next, at.y), g, Color32::WHITE);
         }
     }
 
@@ -1447,8 +1650,7 @@ fn paint_annot(p: &Painter, a: &Annot, mosaic: Option<egui::TextureId>, screen: 
             }
         }
         Annot::Text { pos, text, c, size, wrap, .. } => {
-            let galley = p.layout(text.clone(), FontId::proportional(*size), *c, *wrap);
-            p.galley(*pos, galley, *c);
+            p.galley(*pos, p.layout_job(text_job(text, *size, *c, *wrap)), *c);
         }
     }
 }
@@ -1464,77 +1666,118 @@ fn arc(c: Pos2, r: f32, a0: f32, a1: f32, n: usize) -> Vec<Pos2> {
         .collect()
 }
 
-fn draw_icon(p: &Painter, b: Btn, c: Pos2, col: Color32) {
-    let st = Stroke::new(1.6, col);
+/// Tooltip for a toolbar button: what it does and, if it has one, its shortcut.
+fn btn_tip(b: Btn) -> (&'static str, &'static str) {
+    let mac = cfg!(target_os = "macos");
+    match b {
+        Btn::Tool(Tool::Shape) => ("Rectangle / Ellipse", ""),
+        Btn::Tool(Tool::Arrow) => ("Arrow / Line", ""),
+        Btn::Tool(Tool::Pen) => ("Pen", ""),
+        Btn::Tool(Tool::Highlighter) => ("Highlighter", ""),
+        Btn::Tool(Tool::Mosaic) => ("Mosaic", ""),
+        Btn::Tool(Tool::Text) => ("Text", ""),
+        Btn::Tool(Tool::Eraser) => ("Eraser", ""),
+        Btn::Undo => ("Undo", if mac { "Cmd+Z" } else { "Ctrl+Z" }),
+        Btn::Redo => ("Redo", if mac { "Cmd+Y" } else { "Ctrl+Y" }),
+        Btn::Close => ("Cancel", "Esc"),
+        Btn::Pin => ("Pin to screen", "F3"),
+        Btn::Save => ("Save as PNG", if mac { "Cmd+S" } else { "Ctrl+S" }),
+        Btn::Copy => ("Copy", "Enter"),
+        Btn::Sep => ("", ""),
+    }
+}
+
+/// Icons are drawn in an 18 pt box around `c`. `bg` is what is behind the icon: shapes that sit in
+/// front of others are cut out of them with it.
+fn draw_icon(p: &Painter, b: Btn, c: Pos2, col: Color32, bg: Color32) {
+    let st = Stroke::new(1.5, col);
     let o = |x: f32, y: f32| c + vec2(x, y);
+    // For the tools held at 45 degrees: `u` runs along the tool from its tip (bottom left), `v` across it.
+    let d = |u: f32, v: f32| c + vec2(-8.5, 8.5) + vec2(0.7071, -0.7071) * u + vec2(0.7071, 0.7071) * v;
     match b {
         Btn::Tool(Tool::Shape) => {
-            p.rect_stroke(Rect::from_center_size(o(2.0, 2.0), vec2(14.0, 10.0)), 1.5, st, StrokeKind::Middle);
-            p.add(Shape::ellipse_stroke(o(-2.0, -2.0), vec2(7.0, 5.0), st));
+            p.rect_stroke(Rect::from_min_max(o(-8.5, -8.5), o(2.5, 2.5)), 2.0, st, StrokeKind::Middle);
+            p.circle_filled(o(3.0, 3.0), 7.5, bg);
+            p.circle_stroke(o(3.0, 3.0), 5.5, st);
         }
         Btn::Tool(Tool::Arrow) => {
-            p.add(Shape::line(vec![o(-9.0, 6.0), o(-3.0, -2.0), o(2.0, 3.0), o(7.0, -4.0)], st));
-            let tip = o(9.0, -7.0);
-            p.add(Shape::convex_polygon(vec![tip, o(3.0, -6.0), o(8.0, -1.0)], col, Stroke::NONE));
+            p.line_segment([o(-7.0, 7.0), o(3.5, -3.5)], Stroke::new(1.8, col));
+            p.add(Shape::convex_polygon(vec![o(8.0, -8.0), o(5.6, 0.6), o(-0.6, -5.6)], col, Stroke::NONE));
         }
         Btn::Tool(Tool::Pen) => {
-            p.line_segment([o(-4.0, 4.0), o(6.0, -6.0)], Stroke::new(3.6, col));
-            p.add(Shape::convex_polygon(vec![o(-9.0, 9.0), o(-7.0, 3.0), o(-3.0, 7.0)], col, Stroke::NONE));
+            let h = 2.7;
+            p.add(Shape::convex_polygon(vec![d(0.0, 0.0), d(5.0, h), d(5.0, -h)], col, Stroke::NONE));
+            p.add(Shape::closed_line(vec![d(5.0, h), d(22.0, h), d(22.0, -h), d(5.0, -h)], st));
+            p.line_segment([d(18.0, h), d(18.0, -h)], st);
         }
         Btn::Tool(Tool::Highlighter) => {
-            p.line_segment([o(-3.0, 3.0), o(6.0, -6.0)], Stroke::new(6.0, col));
-            p.line_segment([o(-9.0, 9.0), o(-1.0, 9.0)], Stroke::new(2.0, col));
-            p.line_segment([o(-6.0, 6.0), o(-2.0, 6.0)], Stroke::new(2.0, col));
+            let h = 3.5;
+            // The ink it leaves, the chisel nib, the neck, the barrel.
+            p.line_segment([o(-9.0, 9.0), o(2.0, 9.0)], Stroke::new(2.5, col.gamma_multiply(0.4)));
+            p.add(Shape::convex_polygon(vec![d(6.0, -2.0), d(6.0, 2.0), d(2.0, 2.0), d(3.8, -2.0)], col, Stroke::NONE));
+            p.add(Shape::convex_polygon(vec![d(9.0, -h), d(9.0, h), d(6.0, 2.0), d(6.0, -2.0)], col, Stroke::NONE));
+            p.add(Shape::closed_line(vec![d(9.0, h), d(21.5, h), d(21.5, -h), d(9.0, -h)], st));
         }
         Btn::Tool(Tool::Mosaic) => {
             for iy in 0..3 {
                 for ix in 0..3 {
-                    if (ix + iy) % 2 == 0 {
-                        p.rect_filled(
-                            Rect::from_min_size(o(-8.0 + ix as f32 * 5.5, -8.0 + iy as f32 * 5.5), vec2(5.5, 5.5)),
-                            0.0,
-                            col,
-                        );
-                    }
+                    let a = if (ix + iy) % 2 == 0 { 1.0 } else { 0.3 };
+                    let min = o(-8.0 + ix as f32 * 5.5, -8.0 + iy as f32 * 5.5);
+                    p.rect_filled(Rect::from_min_size(min, vec2(5.0, 5.0)), 1.0, col.gamma_multiply(a));
                 }
             }
-            p.rect_stroke(Rect::from_center_size(c, vec2(16.5, 16.5)), 0.0, Stroke::new(1.0, col), StrokeKind::Middle);
         }
         Btn::Tool(Tool::Text) => {
-            p.text(c + vec2(0.0, 0.5), Align2::CENTER_CENTER, "T", FontId::proportional(19.0), col);
+            let s = Stroke::new(2.0, col);
+            p.line_segment([o(-7.0, -7.0), o(7.0, -7.0)], s);
+            p.line_segment([o(-6.0, -8.0), o(-6.0, -4.0)], s);
+            p.line_segment([o(6.0, -8.0), o(6.0, -4.0)], s);
+            p.line_segment([o(0.0, -8.0), o(0.0, 8.0)], s);
+            p.line_segment([o(-3.0, 7.0), o(3.0, 7.0)], s);
         }
         Btn::Tool(Tool::Eraser) => {
-            p.add(Shape::closed_line(vec![o(-9.0, 2.0), o(-1.0, -7.0), o(9.0, 2.0), o(1.0, 10.0)], st));
-            p.line_segment([o(-5.0, 6.5), o(5.0, -3.0)], Stroke::new(1.2, col));
+            let h = 4.0;
+            p.line_segment([o(-3.0, 9.0), o(9.0, 9.0)], st);
+            p.add(Shape::convex_polygon(vec![d(4.0, h), d(10.0, h), d(10.0, -h), d(4.0, -h)], col.gamma_multiply(0.3), Stroke::NONE));
+            p.add(Shape::closed_line(vec![d(4.0, h), d(20.0, h), d(20.0, -h), d(4.0, -h)], st));
+            p.line_segment([d(10.0, h), d(10.0, -h)], st);
         }
         Btn::Undo | Btn::Redo => {
-            let flip = if b == Btn::Redo { -1.0 } else { 1.0 };
-            let pts: Vec<Pos2> = arc(o(0.0, 1.0), 7.0, -0.2, -3.5, 14).into_iter().map(|q| c + vec2((q.x - c.x) * flip, q.y - c.y)).collect();
-            let end = *pts.last().unwrap();
+            // A U-turn: head on the left for undo, mirrored for redo.
+            let f = if b == Btn::Redo { -1.0 } else { 1.0 };
+            let m = |x: f32, y: f32| c + vec2(x * f, y);
+            let turn = arc(pos2(2.5, 1.5), 4.5, -std::f32::consts::FRAC_PI_2, std::f32::consts::FRAC_PI_2, 12);
+            let mut pts = vec![m(-7.0, -3.0)];
+            pts.extend(turn.into_iter().map(|q| m(q.x, q.y)));
+            pts.push(m(-3.0, 6.0));
             p.add(Shape::line(pts, st));
-            p.add(Shape::convex_polygon(
-                vec![end + vec2(flip * -0.5, -5.0), end + vec2(flip * -0.5, 5.0), end + vec2(flip * 6.0, 0.5)],
-                col,
-                Stroke::NONE,
-            ));
+            p.add(Shape::line(vec![m(-3.0, -7.0), m(-7.0, -3.0), m(-3.0, 1.0)], st));
         }
         Btn::Close => {
-            let s = Stroke::new(2.0, col);
-            p.line_segment([o(-6.0, -6.0), o(6.0, 6.0)], s);
-            p.line_segment([o(-6.0, 6.0), o(6.0, -6.0)], s);
+            let s = Stroke::new(1.8, col);
+            p.line_segment([o(-5.5, -5.5), o(5.5, 5.5)], s);
+            p.line_segment([o(-5.5, 5.5), o(5.5, -5.5)], s);
         }
         Btn::Pin => {
-            p.add(Shape::convex_polygon(vec![o(-1.0, -9.0), o(9.0, 1.0), o(5.0, 1.5), o(2.0, 5.0), o(-5.0, -2.0), o(-1.5, -5.0)], col, Stroke::NONE));
-            p.line_segment([o(-1.0, 3.0), o(-9.0, 11.0)], Stroke::new(1.8, col));
+            // An upright push pin, tilted so the needle points down and to the left.
+            let (sin, cos) = 40f32.to_radians().sin_cos();
+            let t = |x: f32, y: f32| c + vec2(x * cos - y * sin, x * sin + y * cos) + vec2(1.0, -0.5);
+            let body = vec![t(-2.5, -8.5), t(2.5, -8.5), t(2.5, -2.5), t(5.5, 1.0), t(5.5, 2.5), t(-5.5, 2.5), t(-5.5, 1.0), t(-2.5, -2.5)];
+            p.add(Shape::closed_line(body, st));
+            p.line_segment([t(-4.0, -8.5), t(4.0, -8.5)], st);
+            p.line_segment([t(0.0, 2.5), t(0.0, 9.0)], st);
         }
         Btn::Save => {
-            p.rect_stroke(Rect::from_center_size(c, vec2(15.0, 15.0)), 1.5, st, StrokeKind::Middle);
-            p.rect_stroke(Rect::from_min_size(o(-4.0, -7.5), vec2(8.0, 5.0)), 0.0, Stroke::new(1.3, col), StrokeKind::Middle);
-            p.rect_stroke(Rect::from_min_size(o(-5.0, 1.0), vec2(10.0, 6.5)), 0.0, Stroke::new(1.3, col), StrokeKind::Middle);
+            let thin = Stroke::new(1.4, col);
+            p.add(Shape::closed_line(vec![o(-7.5, -7.5), o(4.0, -7.5), o(7.5, -4.0), o(7.5, 7.5), o(-7.5, 7.5)], st));
+            p.add(Shape::line(vec![o(-4.0, -7.5), o(-4.0, -3.0), o(2.5, -3.0), o(2.5, -7.5)], thin));
+            p.add(Shape::line(vec![o(-4.0, 7.5), o(-4.0, 1.5), o(4.0, 1.5), o(4.0, 7.5)], thin));
         }
         Btn::Copy => {
-            p.rect_stroke(Rect::from_min_size(o(-4.0, -9.0), vec2(12.0, 12.0)), 1.5, st, StrokeKind::Middle);
-            p.rect_stroke(Rect::from_min_size(o(-8.0, -5.0), vec2(12.0, 12.0)), 1.5, st, StrokeKind::Middle);
+            let front = Rect::from_min_max(o(-3.0, -3.0), o(8.0, 8.0));
+            p.rect_stroke(Rect::from_min_max(o(-8.0, -8.0), o(3.0, 3.0)), 2.5, st, StrokeKind::Middle);
+            p.rect_filled(front.expand(2.0), 3.5, bg);
+            p.rect_stroke(front, 2.5, st, StrokeKind::Middle);
         }
         Btn::Sep => {}
     }

@@ -19,6 +19,9 @@ Written in Rust (egui + glow). The release is a single exe (also available as an
 - **Adjust** the selection: drag inside to move (annotations move with it), drag the 8 handles to resize.
 - **Annotate**: rectangle / ellipse, arrow / line, pen, highlighter, mosaic, text (CJK works), eraser.
   Colours and sizes per tool, `Shift` constrains shapes to squares and 45° lines. Undo / redo.
+  Rest the pointer on a toolbar button to see what it does and its shortcut.
+- **Text** is typed in a box that grows with it and wraps at the edge of the selection: drag the box's
+  right edge to set the width, drag its frame to move it, and pick a size or colour while typing to restyle it.
 - **Output**: copy to clipboard, save as PNG, or **pin** the image as an always-on-top window
   (drag to move, scroll to zoom, `Ctrl+C` to copy, `Esc` / right-click / double-click to close).
 - The exported image is rendered from exactly what you see, cropped to the pixel.

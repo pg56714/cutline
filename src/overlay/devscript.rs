@@ -5,7 +5,8 @@
 //! w 5; m 400 300; d; m 800 600; u; s selected; btn Shape; sub Color 4; ...
 //! ```
 //!
-//! ops: `m x y` move, `d` press, `u` release, `r` right-click, `w n` wait n frames,
+//! ops: `m x y` move, `mr dx dy` move by, `at <handle|frame|text>` move onto the text box being typed
+//! (its width handle / its frame / the text), `d` press, `u` release, `r` right-click, `w n` wait n frames,
 //! `s name` save an internal screenshot to `%TEMP%\cutline\<name>.png`,
 //! `btn <Shape|Arrow|Pen|Highlighter|Mosaic|Text|Eraser|Undo|Redo|Close|Pin|Save|Copy>`,
 //! `sub <Kind|Width|Color> <n>`, `text <string>`, `esc`, `enter`, `ctrlz`, `ctrly`, `close`.
@@ -16,6 +17,8 @@ use std::collections::VecDeque;
 
 pub enum Op {
     Move(f32, f32),
+    MoveBy(f32, f32),
+    At(String),
     Down,
     Up,
     Right,
@@ -50,6 +53,8 @@ pub fn parse(s: &str) -> Script {
         let f = |i: usize| t.get(i).and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0);
         let op = match head {
             "m" => Op::Move(f(1), f(2)),
+            "mr" => Op::MoveBy(f(1), f(2)),
+            "at" => Op::At(t.get(1).copied().unwrap_or("").to_string()),
             "d" => Op::Down,
             "u" => Op::Up,
             "r" => Op::Right,
@@ -110,6 +115,26 @@ impl Overlay {
             Op::Move(x, y) => {
                 sc.pos = pos2(x, y);
                 raw.events.push(egui::Event::PointerMoved(sc.pos));
+            }
+            Op::MoveBy(dx, dy) => {
+                sc.pos += vec2(dx, dy);
+                raw.events.push(egui::Event::PointerMoved(sc.pos));
+            }
+            Op::At(what) => {
+                let r = self.edit_rect;
+                let target = match (self.editing.is_some(), what.as_str()) {
+                    (true, "handle") => Some(self.text_handle().center()),
+                    (true, "frame") => Some(pos2(r.center().x, r.min.y - 5.0)),
+                    (true, "text") => Some(r.center()),
+                    _ => None,
+                };
+                match (target, self.script.as_mut()) {
+                    (Some(q), Some(sc)) => {
+                        sc.pos = q;
+                        raw.events.push(egui::Event::PointerMoved(q));
+                    }
+                    _ => eprintln!("[script] no text box part: {what}"),
+                }
             }
             Op::Down | Op::Up => raw.events.push(egui::Event::PointerButton {
                 pos: sc.pos,
