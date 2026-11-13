@@ -634,6 +634,7 @@ dependencies = [
  "global-hotkey",
  "image",
  "mouse_position",
+ "raw-window-handle",
  "rfd",
  "tao",
  "tray-icon",

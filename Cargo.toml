@@ -25,13 +25,15 @@ tray-icon = "0.26.1"
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 xcap = "0.9.10"
 
-# Windows-only: DPI awareness, cursor position, foreground permission.
+# Windows-only: DPI awareness, cursor position, foreground permission, window frame fixes (src/dwm.rs).
 [target.'cfg(windows)'.dependencies]
+raw-window-handle = "0.6"
 windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_HiDpi",
     "Win32_Graphics_Dwm",
+    "Win32_UI_Controls",
     "Win32_System_Threading",
 ] }
 

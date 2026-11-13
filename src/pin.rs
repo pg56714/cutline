@@ -57,7 +57,7 @@ impl eframe::App for Pin {
         [0.0, 0.0, 0.0, 1.0]
     }
 
-    fn ui(&mut self, ui: &mut Ui, _f: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         let rect = ctx.content_rect();
         let p = ctx.layer_painter(egui::LayerId::background());
@@ -67,6 +67,7 @@ impl eframe::App for Pin {
         // Tell the overlay that spawned us that the image is on screen, so it can step aside.
         if self.frames == 0 {
             crate::dwm::disable_transitions();
+            crate::dwm::own_pixels(frame, crate::dwm::Kind::Pin);
         }
         self.frames += 1;
         if self.frames == 2 {
