@@ -189,6 +189,17 @@ struct Overlay {
     script: Option<devscript::Script>,
 }
 
+/// Height, in points, that the overlay window stops short of the monitor: one pixel on Windows.
+///
+/// A borderless OpenGL window covering a monitor exactly is taken over there as an exclusive
+/// full-screen surface, and every way out of that mode flashes: the overlay hiding, the save dialog
+/// or a pin opening over it. One row short, the desktop keeps being composed and those are plain
+/// one-frame changes. The monitor's last row shows through live; it is still part of the frozen
+/// picture, so it can be selected and is exported.
+fn bottom_gap(scale: f32) -> f32 {
+    if cfg!(windows) { 1.0 / scale.max(0.25) } else { 0.0 }
+}
+
 pub fn run(args: &[String]) {
     let Some(path) = args.first().map(std::path::PathBuf::from) else { return };
     let Ok(frame) = Frame::read(&path) else { return };
@@ -196,6 +207,7 @@ pub fn run(args: &[String]) {
 
     let pos = pos2(frame.x, frame.y);
     let size = vec2(frame.lw, frame.lh);
+    let gap = bottom_gap(frame.scale);
     let options = eframe::NativeOptions {
         viewport: ViewportBuilder::default()
             .with_title("Cutline")
@@ -205,7 +217,7 @@ pub fn run(args: &[String]) {
             .with_taskbar(false)
             .with_resizable(false)
             .with_position(pos)
-            .with_inner_size(size),
+            .with_inner_size(size - vec2(0.0, gap)),
         renderer: eframe::Renderer::Glow,
         ..Default::default()
     };
@@ -1496,8 +1508,10 @@ impl eframe::App for Overlay {
     fn ui(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.screen = ctx.content_rect();
+        self.screen.max.y += bottom_gap(self.frame.scale);
         if self.frames == 0 {
             crate::dwm::disable_transitions();
+            crate::dwm::own_pixels(frame, crate::dwm::Kind::Overlay);
             ctx.send_viewport_cmd(ViewportCommand::Focus);
         }
         self.frames += 1;
