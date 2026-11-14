@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.4.0 (2026-11-14)
+
+### Features
+
+- **tray:** start at sign-in (Run key, XDG autostart, LaunchAgent) ([29beefa](https://github.com/pg56714/cutline/commit/29beefaac695b9c9aa67e4053c1fd7b6288f5d3c))
+
 ## v0.3.0 (2026-11-13)
 
 ### Features
