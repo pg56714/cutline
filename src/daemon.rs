@@ -2,6 +2,7 @@
 //! under the cursor *immediately* (before anything is drawn) and launches the
 //! overlay process with that frozen frame.
 
+use crate::autostart;
 use crate::frame::{self, Frame};
 use global_hotkey::{
     GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState,
@@ -13,7 +14,7 @@ use tao::event::{Event, StartCause};
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
 use tray_icon::{
     Icon, TrayIcon, TrayIconBuilder,
-    menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
+    menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem},
 };
 
 enum UserEvent {
@@ -149,8 +150,12 @@ pub fn run() {
     let hotkey_id = hotkey.id();
 
     let capture_item = MenuItem::new(format!("Capture ({hotkey_text})"), true, None);
+    // Ticked from what the system has, not from config.txt (see autostart.rs).
+    let mut autostart_on = autostart::is_enabled();
+    let autostart_item = CheckMenuItem::new(autostart::LABEL, true, autostart_on, None);
     let quit_item = MenuItem::new("Quit", true, None);
     let capture_id = capture_item.id().clone();
+    let autostart_id = autostart_item.id().clone();
     let quit_id = quit_item.id().clone();
 
     let mut tray: Option<TrayIcon> = None;
@@ -165,7 +170,13 @@ pub fn run() {
             // Tray icons must be created once the event loop is running (required on macOS).
             Event::NewEvents(StartCause::Init) => {
                 let menu = Menu::new();
-                let _ = menu.append_items(&[&capture_item, &PredefinedMenuItem::separator(), &quit_item]);
+                let _ = menu.append_items(&[
+                    &capture_item,
+                    &PredefinedMenuItem::separator(),
+                    &autostart_item,
+                    &PredefinedMenuItem::separator(),
+                    &quit_item,
+                ]);
                 match TrayIconBuilder::new()
                     .with_menu(Box::new(menu))
                     .with_tooltip(tooltip.clone())
@@ -188,6 +199,14 @@ pub fn run() {
                     *control_flow = ControlFlow::Exit;
                 } else if ev.id == capture_id {
                     want_capture = true;
+                } else if ev.id == autostart_id {
+                    // Flip what the item showed (the menu may have flipped its tick by itself
+                    // already), then show what the system has now.
+                    if let Err(e) = autostart::set_enabled(!autostart_on) {
+                        message_box(&format!("Could not change \"{}\": {e}", autostart::LABEL));
+                    }
+                    autostart_on = autostart::is_enabled();
+                    autostart_item.set_checked(autostart_on);
                 }
             }
             _ => {}

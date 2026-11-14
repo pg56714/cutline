@@ -12,7 +12,7 @@ Written in Rust (egui + glow). The release is a single exe (also available as an
 
 ## Features
 
-- **Global hotkey** (default `F1`) and a tray icon (`Capture` / `Quit`).
+- **Global hotkey** (default `F1`) and a tray icon (`Capture` / `Start with Windows` / `Quit`).
 - **Freeze, then pick**: the screen is grabbed *before* anything is drawn, so you capture exactly what you saw.
 - **Hover to snap to a window**, click to select it, or drag to select any region.
 - **Magnifier** with pixel coordinates and RGB under the cursor; press `C` to copy the colour as `#RRGGBB`.
@@ -52,6 +52,29 @@ Any combination understood by the [`global-hotkey`](https://crates.io/crates/glo
 for example `F2` or `ctrl+shift+KeyA`. If the key is already taken by another program (Snipaste, for
 instance) Cutline tells you and exits; quit the other program or pick another key.
 You can also override it for one run with the `CUTLINE_HOTKEY` environment variable.
+
+## Start at sign-in
+
+Tick **Start with Windows** in the tray menu (**Start at login** on Linux and macOS) to have Cutline start
+when you sign in, and untick it to stop. It is off by default. The setting is kept where the system keeps
+it, not in `config.txt`:
+
+| Platform | Entry |
+| --- | --- |
+| Windows | The `Cutline` value under `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run` |
+| Linux | `~/.config/autostart/cutline.desktop` (`$XDG_CONFIG_HOME/autostart/cutline.desktop` if that is set). An AppImage is started through its `.AppImage` file. |
+| macOS | `~/Library/LaunchAgents/app.cutline.desktop.plist` |
+
+- The entry starts the copy of Cutline that ticked it. If you move the portable exe, or run another copy,
+  the item shows unticked there; ticking it points the entry at that copy.
+- Cutline reads the setting when it starts, so switching it off in the system's own settings shows as
+  unticked from the next start: Task Manager → Startup apps or Settings → Apps → Startup on Windows, the
+  desktop's autostart settings on Linux. Not on macOS: switching it off under System Settings → General →
+  Login Items leaves the item ticked.
+- Uninstalling Cutline does not remove the entry, so untick it first. A leftover entry points at a missing
+  file and starts nothing.
+- On Windows the registry handling is covered by unit tests, but signing in with it ticked has not been
+  tested yet. The Linux and macOS entries have not been tested.
 
 ## Platforms
 

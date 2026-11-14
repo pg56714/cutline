@@ -10,7 +10,7 @@
 
 ## 功能
 
-- **全域熱鍵**(預設 `F1`)和系統匣圖示(`Capture` / `Quit`)。
+- **全域熱鍵**(預設 `F1`)和系統匣圖示(`Capture` / `Start with Windows` / `Quit`)。
 - **先凍結,再選取**:畫面在任何東西畫出來*之前*就先擷取,所以截到的就是你當下看到的樣子。
 - **滑鼠移到視窗上會自動吸附**,點一下就選取該視窗,也可以拖曳選取任意區域。
 - **放大鏡**:顯示游標下的像素座標與 RGB,按 `C` 可把顏色以 `#RRGGBB` 複製起來。
@@ -50,6 +50,25 @@ hotkey = F1
 例如 `F2` 或 `ctrl+shift+KeyA`。如果該按鍵已被其他程式佔用(例如 Snipaste),
 Cutline 會提示後結束;請關閉那個程式,或改用別的按鍵。
 也可以用 `CUTLINE_HOTKEY` 環境變數只在單次執行時覆寫。
+
+## 登入時自動啟動
+
+在系統匣選單勾選 **Start with Windows**(Linux 與 macOS 上是 **Start at login**),登入時就會自動啟動 Cutline;
+取消勾選就不再自動啟動。預設為關閉。這個設定存放在系統本身保存它的地方,而不是 `config.txt`:
+
+| 平台 | 位置 |
+| --- | --- |
+| Windows | `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run` 底下的 `Cutline` 值 |
+| Linux | `~/.config/autostart/cutline.desktop`(有設定 `$XDG_CONFIG_HOME` 時是 `$XDG_CONFIG_HOME/autostart/cutline.desktop`)。AppImage 會透過 `.AppImage` 檔本身啟動。 |
+| macOS | `~/Library/LaunchAgents/app.cutline.desktop.plist` |
+
+- 啟動的是勾選它的那一份 Cutline。如果搬動了免安裝版的 exe,或執行的是另一份 Cutline,
+  那裡的選項會顯示未勾選;勾選後就改成啟動那一份。
+- Cutline 啟動時才讀取這個設定,所以在系統自己的設定裡關閉後,下次啟動時選項就會顯示未勾選:
+  Windows 是「工作管理員 → 啟動應用程式」或「設定 → 應用程式 → 啟動」,Linux 是桌面環境的自動啟動設定。
+  macOS 例外:在「系統設定 → 一般 → 登入項目」裡關閉後,選項仍會顯示勾選。
+- 解除安裝 Cutline 不會移除這個設定,請先取消勾選。殘留的設定指向已不存在的檔案,不會啟動任何東西。
+- Windows 上的登錄檔處理有單元測試涵蓋,但還沒實際測試勾選後重新登入;Linux 與 macOS 的部分都還沒測試。
 
 ## 支援的平台
 

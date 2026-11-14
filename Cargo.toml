@@ -25,7 +25,8 @@ tray-icon = "0.26.1"
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 xcap = "0.9.10"
 
-# Windows-only: DPI awareness, cursor position, foreground permission, window frame fixes (src/dwm.rs).
+# Windows-only: DPI awareness, cursor position, foreground permission, window frame fixes (src/dwm.rs),
+# the Run registry key for starting at sign-in (src/autostart.rs).
 [target.'cfg(windows)'.dependencies]
 raw-window-handle = "0.6"
 windows-sys = { version = "0.61.2", features = [
@@ -35,6 +36,7 @@ windows-sys = { version = "0.61.2", features = [
     "Win32_Graphics_Dwm",
     "Win32_UI_Controls",
     "Win32_System_Threading",
+    "Win32_System_Registry",
 ] }
 
 # macOS: cursor position (Windows uses GetCursorPos, Linux asks the X server).
