@@ -182,6 +182,11 @@ struct Overlay {
     tip_live: bool,
     tip_seen: f64,
 
+    /// System fonts for characters egui's own fonts lack (CJK, ...). One provider serves the
+    /// overlay and the export: listing the system fonts takes a while, and it is done once, in
+    /// the background, by the time anything is exported.
+    fonts: Arc<egui_system_font_provider::SystemFontProvider>,
+
     export: Option<Export>,
     save_job: Option<(u32, u32, Vec<u8>)>,
     frames: u32,
@@ -219,6 +224,8 @@ pub fn run(args: &[String]) {
             .with_position(pos)
             .with_inner_size(size - vec2(0.0, gap)),
         renderer: eframe::Renderer::Glow,
+        // `Overlay::new` installs the system font provider itself, to share it with the export.
+        system_font_fallback: false,
         ..Default::default()
     };
     let _ = eframe::run_native(
@@ -241,6 +248,8 @@ impl Overlay {
                 (r.width() > 8.0 && r.height() > 8.0).then_some(r)
             })
             .collect();
+        let fonts = Arc::new(egui_system_font_provider::SystemFontProvider::new());
+        cc.egui_ctx.add_font_provider(fonts.clone());
         Overlay {
             frame,
             tex,
@@ -270,6 +279,7 @@ impl Overlay {
             tip_muted: false,
             tip_live: false,
             tip_seen: f64::NEG_INFINITY,
+            fonts,
             export: None,
             save_job: None,
             frames: 0,
@@ -1181,7 +1191,11 @@ impl Overlay {
                     .layouter(&mut layouter);
                 // The Area's max width is last frame's size, so give the editor its own width.
                 let out = ui.allocate_ui(vec2(box_w, 0.0), |ui| te.show(ui)).inner;
-                out.response.request_focus();
+                // Only when it is not focused yet: asking for focus cancels the IME composition,
+                // so asking every frame would make Chinese / Japanese / Korean impossible to type.
+                if !out.response.has_focus() {
+                    out.response.request_focus();
+                }
                 (out.response.rect, out.galley.size().x)
             });
         let (text_rect, fit) = area.inner;
@@ -1433,7 +1447,7 @@ impl Overlay {
     /// Draw the annotations into `out` (the cropped selection) via a headless egui context.
     fn burn_annots(&self, out: &mut [u8], w: usize, h: usize, k: f32, offset_px: (f32, f32), sel: Rect) {
         let ctx = Context::default();
-        ctx.add_font_provider(Arc::new(egui_system_font_provider::SystemFontProvider::new()));
+        ctx.add_font_provider(self.fonts.clone());
         ctx.set_pixels_per_point(k);
 
         let has_mosaic = self.shapes.iter().any(|s| matches!(s, Annot::Mosaic { .. }));
