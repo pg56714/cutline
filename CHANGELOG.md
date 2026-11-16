@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.4.1 (2026-11-16)
+
+### Fixes
+
+- **overlay:** let the IME compose in the text box ([ab5c15c](https://github.com/pg56714/cutline/commit/ab5c15c4f2dfb410bf1ad0db10df610538bed260))
+
 ## v0.4.0 (2026-11-14)
 
 ### Features
