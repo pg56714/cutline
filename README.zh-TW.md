@@ -8,6 +8,24 @@
 
 > Cutline 是獨立的專案,與 Snipaste 沒有關聯,也不是從它衍生而來;只是採用相同的大致流程。
 
+> [!WARNING]
+> **應用程式沒有程式碼簽章**,第一次執行會被系統擋下,只需處理一次:
+> - **Windows**:「Windows 已保護您的電腦」→ **其他資訊** → **仍要執行**
+> - **macOS**:系統設定 → 隱私權與安全性 → 找到 Cutline,按 **仍要開啟**;或在終端機執行 `xattr -cr /Applications/Cutline.app`
+> - **Linux**:AppImage 先執行 `chmod +x`;.deb 照一般方式安裝
+
+## 下載
+
+從[最新版本](https://github.com/pg56714/cutline/releases/latest)下載對應系統的檔案。
+
+| 系統 | 檔案 | 說明 |
+| --- | --- | --- |
+| Windows | `cutline_*_x64-setup.exe` | 安裝程式 |
+| Windows | `cutline_windows_x64.exe` | 免安裝,直接執行 |
+| macOS | `Cutline_*.dmg` | Apple Silicon |
+| Linux | `cutline_*_x86_64.AppImage` | 先執行 `chmod +x` |
+| Linux | `cutline_*_amd64.deb` | Debian / Ubuntu:`sudo apt install ./cutline_*.deb` |
+
 ## 功能
 
 - **全域熱鍵**(預設 `F1`)和系統匣圖示(`Capture` / `Start with Windows` / `Quit`)。
@@ -70,6 +88,23 @@ Cutline 會提示後結束;請關閉那個程式,或改用別的按鍵。
 - 解除安裝 Cutline 不會移除這個設定,請先取消勾選。殘留的設定指向已不存在的檔案,不會啟動任何東西。
 - Windows 上的登錄檔處理有單元測試涵蓋,但還沒實際測試勾選後重新登入;Linux 與 macOS 的部分都還沒測試。
 
+## 更新
+
+Cutline 啟動時會安靜地檢查一次有沒有新的[版本](https://github.com/pg56714/cutline/releases),之後只有按 **Check for updates** 才會再檢查(沒有定時檢查)。
+有新版時,托盤選單的 **Check for updates** 會變成 **Update to vX.Y.Z**,點它就會更新。
+沒有新版時點它,會立刻檢查並告訴你結果。
+
+| 你怎麼執行它 | 更新會做什麼 |
+| --- | --- |
+| Windows 安裝版 | 下載新的安裝程式並執行 |
+| Windows 免安裝 `.exe`、Linux AppImage | 下載新檔案、原地換掉,然後重新啟動 Cutline |
+| `.deb`、`.dmg`、自己編譯的 | 開啟版本頁面,請自行安裝 |
+
+- 下載透過 `curl`,Windows 10 以上、macOS 和桌面版 Linux 都已內建。下載到的若不是程式(中斷或錯誤頁面),不會取代任何東西。
+- 設定 `CUTLINE_NO_UPDATE_CHECK=1` 可關閉檢查(托盤項目也會停用)。
+- 換檔需要對檔案所在資料夾有寫入權限。
+- 已測試:版本比較、挑對檔案、下載與換檔(Windows 與 Ubuntu 的單元測試),以及 Linux 上有新版時常駐程式能正常啟動。托盤項目的點擊尚未實測。
+
 ## 支援的平台
 
 | 平台 | 狀態 |
@@ -80,6 +115,9 @@ Cutline 會提示後結束;請關閉那個程式,或改用別的按鍵。
 | macOS | 通過型別檢查(`cargo check --target aarch64-apple-darwin`),但**從未實際執行過**。需要「螢幕錄製」權限。 |
 
 ## 建置
+
+Rust 版本固定在 `rust-toolchain.toml`(發佈流程用同一個版本),新的 stable 出來也不會自己改變建置結果。要升級時,
+同時改那裡的 `channel` 和 `.github/workflows/release.yml` 裡 `dtolnay/rust-toolchain@` 的標籤。
 
 ```
 cargo build --release

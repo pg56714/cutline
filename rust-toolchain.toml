@@ -1,0 +1,5 @@
+# One Rust version for local builds and CI, so a new stable release never changes a build by itself.
+# To upgrade: change `channel` here and the `dtolnay/rust-toolchain@` tag in .github/workflows/release.yml.
+[toolchain]
+channel = "1.99.1"
+profile = "minimal"

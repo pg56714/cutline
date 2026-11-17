@@ -9,6 +9,7 @@ mod dwm;
 mod frame;
 mod overlay;
 mod pin;
+mod update;
 
 fn main() {
     daemon::set_dpi_aware();

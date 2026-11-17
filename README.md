@@ -10,9 +10,27 @@ Written in Rust (egui + glow). The release is a single exe (also available as an
 > Cutline is an independent project. It is not affiliated with or derived from Snipaste;
 > it only follows the same general workflow.
 
+> [!WARNING]
+> **The app is not code-signed**, so the system blocks it the first time. Do this once:
+> - **Windows**: "Windows protected your PC" -> **More info** -> **Run anyway**
+> - **macOS**: System Settings -> Privacy & Security -> find Cutline and click **Open Anyway**, or run `xattr -cr /Applications/Cutline.app` in Terminal
+> - **Linux**: run `chmod +x` on the AppImage first; the .deb installs as usual
+
+## Download
+
+Grab the file for your system from the [latest release](https://github.com/pg56714/cutline/releases/latest).
+
+| System | File | Notes |
+| --- | --- | --- |
+| Windows | `cutline_*_x64-setup.exe` | Installer |
+| Windows | `cutline_windows_x64.exe` | Portable, runs without installing |
+| macOS | `Cutline_*.dmg` | Apple Silicon |
+| Linux | `cutline_*_x86_64.AppImage` | `chmod +x` first |
+| Linux | `cutline_*_amd64.deb` | Debian / Ubuntu: `sudo apt install ./cutline_*.deb` |
+
 ## Features
 
-- **Global hotkey** (default `F1`) and a tray icon (`Capture` / `Start with Windows` / `Quit`).
+- **Global hotkey** (default `F1`) and a tray icon (`Capture` / `Start with Windows` / `Check for updates` / `Quit`).
 - **Freeze, then pick**: the screen is grabbed *before* anything is drawn, so you capture exactly what you saw.
 - **Hover to snap to a window**, click to select it, or drag to select any region.
 - **Magnifier** with pixel coordinates and RGB under the cursor; press `C` to copy the colour as `#RRGGBB`.
@@ -76,6 +94,25 @@ it, not in `config.txt`:
 - On Windows the registry handling is covered by unit tests, but signing in with it ticked has not been
   tested yet. The Linux and macOS entries have not been tested.
 
+## Updates
+
+Cutline looks for a newer [release](https://github.com/pg56714/cutline/releases) once when it starts, quietly, and again whenever you click **Check for updates** (there is no timer).
+When there is one, the tray item **Check for updates** becomes **Update to vX.Y.Z**; click it to update.
+Clicking it with nothing newer checks right away and says so.
+
+| How you run it | What the update does |
+| --- | --- |
+| Windows installer | Downloads the new setup program and runs it |
+| Windows portable `.exe`, Linux AppImage | Downloads the new file, swaps it in place and restarts Cutline |
+| `.deb`, `.dmg`, built from source | Opens the release page; install it yourself |
+
+- Downloads go through `curl`, which Windows 10+, macOS and desktop Linux already have. A download that is not a
+  program (cut off, or an error page) never replaces anything.
+- `CUTLINE_NO_UPDATE_CHECK=1` turns the check off (and the tray item with it).
+- The swap needs write access to the folder the file is in.
+- Tested: the version comparison, picking the right file, the download and swap (unit tests on Windows and Ubuntu),
+  and that the resident process starts on Linux with an update available. Clicking the tray item has not been tried.
+
 ## Platforms
 
 | Platform | Status |
@@ -86,6 +123,10 @@ it, not in `config.txt`:
 | macOS | Type-checks (`cargo check --target aarch64-apple-darwin`) but has **never been run**. Needs the Screen Recording permission. |
 
 ## Build
+
+Rust is pinned in `rust-toolchain.toml` (the release workflow uses the same version), so a new stable release never
+changes a build by itself. To upgrade, change `channel` there and the `dtolnay/rust-toolchain@` tag in
+`.github/workflows/release.yml`.
 
 ```
 cargo build --release

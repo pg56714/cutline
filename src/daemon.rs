@@ -4,6 +4,7 @@
 
 use crate::autostart;
 use crate::frame::{self, Frame};
+use crate::update::{self, Outcome, Release};
 use global_hotkey::{
     GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState,
     hotkey::{Code, HotKey},
@@ -20,7 +21,13 @@ use tray_icon::{
 enum UserEvent {
     Hotkey(GlobalHotKeyEvent),
     Menu(MenuEvent),
+    /// A release check finished; `manual` when the user asked for it from the menu.
+    Checked { manual: bool, result: Result<Option<Release>, String> },
+    /// Downloading and installing the update finished.
+    Updated(Result<Outcome, String>),
 }
+
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg(windows)]
 pub fn set_dpi_aware() {
@@ -39,6 +46,14 @@ pub fn message_box(text: &str) {
     rfd::MessageDialog::new()
         .set_title("Cutline")
         .set_level(rfd::MessageLevel::Error)
+        .set_description(text)
+        .show();
+}
+
+fn info_box(text: &str) {
+    rfd::MessageDialog::new()
+        .set_title("Cutline")
+        .set_level(rfd::MessageLevel::Info)
         .set_description(text)
         .show();
 }
@@ -109,12 +124,22 @@ fn single_instance() -> Option<std::fs::File> {
     let user = std::env::var("USERNAME").or_else(|_| std::env::var("USER")).unwrap_or_default();
     let path = std::env::temp_dir().join(format!("cutline-{user}.lock"));
     let file = std::fs::OpenOptions::new().create(true).write(true).truncate(false).open(path).ok()?;
-    file.try_lock().ok()?;
-    Some(file)
+    // An update starts the new copy while the old one is still shutting down: wait for its lock.
+    let tries = if std::env::var_os("CUTLINE_RESTARTED").is_some() { 50 } else { 1 };
+    for i in 0..tries {
+        if file.try_lock().is_ok() {
+            return Some(file);
+        }
+        if i + 1 < tries {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    }
+    None
 }
 
 pub fn run() {
     let Some(_lock) = single_instance() else { return };
+    update::tidy();
 
     let hotkey_text = config_hotkey();
     let hotkey = HotKey::from_str(&hotkey_text)
@@ -128,6 +153,7 @@ pub fn run() {
     GlobalHotKeyEvent::set_event_handler(Some(move |e| {
         let _ = proxy.send_event(UserEvent::Hotkey(e));
     }));
+    let event_loop_proxy = event_loop.create_proxy();
     let proxy = event_loop.create_proxy();
     MenuEvent::set_event_handler(Some(move |e| {
         let _ = proxy.send_event(UserEvent::Menu(e));
@@ -153,10 +179,14 @@ pub fn run() {
     // Ticked from what the system has, not from config.txt (see autostart.rs).
     let mut autostart_on = autostart::is_enabled();
     let autostart_item = CheckMenuItem::new(autostart::LABEL, true, autostart_on, None);
+    let update_item = MenuItem::new("Check for updates", update::enabled(), None);
     let quit_item = MenuItem::new("Quit", true, None);
     let capture_id = capture_item.id().clone();
     let autostart_id = autostart_item.id().clone();
+    let update_id = update_item.id().clone();
     let quit_id = quit_item.id().clone();
+    let mut found: Option<Release> = None;
+    let mut updating = false;
 
     let mut tray: Option<TrayIcon> = None;
     let mut child: Option<Child> = None;
@@ -174,9 +204,19 @@ pub fn run() {
                     &capture_item,
                     &PredefinedMenuItem::separator(),
                     &autostart_item,
+                    &update_item,
                     &PredefinedMenuItem::separator(),
                     &quit_item,
                 ]);
+                // Look for a new release once at start; quiet unless there is one. After that only the
+                // "Check for updates" item checks again.
+                if update::enabled() {
+                    let proxy = event_loop_proxy.clone();
+                    std::thread::spawn(move || {
+                        let result = update::check(VERSION);
+                        let _ = proxy.send_event(UserEvent::Checked { manual: false, result });
+                    });
+                }
                 match TrayIconBuilder::new()
                     .with_menu(Box::new(menu))
                     .with_tooltip(tooltip.clone())
@@ -193,12 +233,68 @@ pub fn run() {
                     want_capture = true;
                 }
             }
+            Event::UserEvent(UserEvent::Checked { manual, result }) => match result {
+                Ok(Some(rel)) => {
+                    update_item.set_text(format!("Update to v{}", rel.version()));
+                    found = Some(rel);
+                }
+                Ok(None) => {
+                    if manual {
+                        info_box(&format!("Cutline {VERSION} is the latest version."));
+                    }
+                }
+                Err(e) => {
+                    if manual {
+                        message_box(&format!("Could not check for updates: {e}"));
+                    }
+                }
+            },
+            Event::UserEvent(UserEvent::Updated(result)) => {
+                updating = false;
+                match result {
+                    Ok(Outcome::Restart(path)) => match update::restart(&path) {
+                        Ok(()) => {
+                            tray.take();
+                            *control_flow = ControlFlow::Exit;
+                        }
+                        Err(e) => message_box(&format!("Updated, but Cutline could not restart itself: {e}
+
+Start it again by hand.")),
+                    },
+                    Ok(Outcome::Quit) => {
+                        tray.take();
+                        *control_flow = ControlFlow::Exit;
+                    }
+                    Ok(Outcome::OpenPage(url)) => update::open_url(&url),
+                    Err(e) => {
+                        update_item.set_text(format!("Update to v{}", found.as_ref().map_or("", |r| r.version())));
+                        message_box(&format!("Update failed: {e}"));
+                    }
+                }
+            }
             Event::UserEvent(UserEvent::Menu(ev)) => {
                 if ev.id == quit_id {
                     tray.take();
                     *control_flow = ControlFlow::Exit;
                 } else if ev.id == capture_id {
                     want_capture = true;
+                } else if ev.id == update_id {
+                    if updating {
+                        // already working on it
+                    } else if let Some(rel) = found.clone() {
+                        updating = true;
+                        update_item.set_text("Updating...");
+                        let proxy = event_loop_proxy.clone();
+                        std::thread::spawn(move || {
+                            let _ = proxy.send_event(UserEvent::Updated(update::apply(&rel)));
+                        });
+                    } else {
+                        let proxy = event_loop_proxy.clone();
+                        std::thread::spawn(move || {
+                            let result = update::check(VERSION);
+                            let _ = proxy.send_event(UserEvent::Checked { manual: true, result });
+                        });
+                    }
                 } else if ev.id == autostart_id {
                     // Flip what the item showed (the menu may have flipped its tick by itself
                     // already), then show what the system has now.
