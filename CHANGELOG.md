@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.5.0 (2026-11-17)
+
+### Features
+
+- **update:** check GitHub releases and update from the tray ([b5e22b2](https://github.com/pg56714/cutline/commit/b5e22b2f5d534389308d4ec0f1ffe723623dcf9d))
+
 ## v0.4.1 (2026-11-16)
 
 ### Fixes
