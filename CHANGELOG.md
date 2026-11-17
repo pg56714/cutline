@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.6.0 (2026-11-17)
+
+### Features
+
+- **release:** publish SHA256SUMS and build attestations, verify downloads on update ([c9866e2](https://github.com/pg56714/cutline/commit/c9866e27ceb40a74a0f3d70c8edd2552374d742d))
+
 ## v0.5.0 (2026-11-17)
 
 ### Features
