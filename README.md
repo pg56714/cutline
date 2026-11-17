@@ -15,6 +15,8 @@ Written in Rust (egui + glow). The release is a single exe (also available as an
 > - **Windows**: "Windows protected your PC" -> **More info** -> **Run anyway**
 > - **macOS**: System Settings -> Privacy & Security -> find Cutline and click **Open Anyway**, or run `xattr -cr /Applications/Cutline.app` in Terminal
 > - **Linux**: run `chmod +x` on the AppImage first; the .deb installs as usual
+>
+> Because there is no signature, check what you downloaded: see [Verify your download](#verify-your-download).
 
 ## Download
 
@@ -71,6 +73,28 @@ for example `F2` or `ctrl+shift+KeyA`. If the key is already taken by another pr
 instance) Cutline tells you and exits; quit the other program or pick another key.
 You can also override it for one run with the `CUTLINE_HOTKEY` environment variable.
 
+## Verify your download
+
+Every release carries a `SHA256SUMS` file and a build attestation (GitHub's signed record that the file was built
+by this repository's release workflow). Either one tells you the file is the one the workflow produced.
+
+```powershell
+# Windows: compare with the line for your file in SHA256SUMS
+Get-FileHash .\cutline_windows_x64.exe -Algorithm SHA256
+```
+
+```bash
+# macOS / Linux, with SHA256SUMS in the same folder
+sha256sum -c --ignore-missing SHA256SUMS      # macOS: shasum -a 256 -c --ignore-missing SHA256SUMS
+
+# Stronger: needs the GitHub CLI
+gh attestation verify <file> --repo pg56714/cutline
+```
+
+`SHA256SUMS` sits next to the files on the release page, so it catches a damaged or swapped download but not a
+compromised GitHub account; the attestation is the check that does. Neither replaces a code signature, so the
+system warning above stays.
+
 ## Start at sign-in
 
 Tick **Start with Windows** in the tray menu (**Start at login** on Linux and macOS) to have Cutline start
@@ -107,7 +131,8 @@ Clicking it with nothing newer checks right away and says so.
 | `.deb`, `.dmg`, built from source | Opens the release page; install it yourself |
 
 - Downloads go through `curl`, which Windows 10+, macOS and desktop Linux already have. A download that is not a
-  program (cut off, or an error page) never replaces anything.
+  program (cut off, or an error page) never replaces anything. When the release has a `SHA256SUMS` file, the
+  download must match it too; releases older than that have none, and are accepted as before.
 - `CUTLINE_NO_UPDATE_CHECK=1` turns the check off (and the tray item with it).
 - The swap needs write access to the folder the file is in.
 - Tested: the version comparison, picking the right file, the download and swap (unit tests on Windows and Ubuntu),

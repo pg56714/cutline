@@ -161,6 +161,35 @@ pub fn asset_for<'a>(rel: &'a Release, kind: &Kind) -> Option<&'a Asset> {
     }
 }
 
+/// The checksum of `name` in the text of a `SHA256SUMS` file (`<hex>  <name>` per line).
+fn expected_sum(sums: &str, name: &str) -> Option<String> {
+    sums.lines().find_map(|l| {
+        let (hash, file) = l.trim().split_once(char::is_whitespace)?;
+        (file.trim_start().trim_start_matches('*') == name).then(|| hash.to_ascii_lowercase())
+    })
+}
+
+fn sha256_hex(p: &Path) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+    let mut f = std::fs::File::open(p).map_err(|e| e.to_string())?;
+    let mut h = Sha256::new();
+    std::io::copy(&mut f, &mut h).map_err(|e| e.to_string())?;
+    Ok(h.finalize().iter().map(|b| format!("{b:02x}")).collect())
+}
+
+/// Checks the downloaded `file` against the release's `SHA256SUMS`. A release without that file
+/// (made before it existed) is accepted; one that has it but does not list this file, or lists a
+/// different checksum, is refused.
+fn verify(rel: &Release, asset: &Asset, file: &Path) -> Result<(), String> {
+    let Some(sums) = rel.assets.iter().find(|a| a.name == "SHA256SUMS") else { return Ok(()) };
+    let text = fetch_text(&sums.url).map_err(|e| format!("could not fetch SHA256SUMS: {e}"))?;
+    let want = expected_sum(&text, &asset.name).ok_or_else(|| format!("SHA256SUMS does not list {}", asset.name))?;
+    if sha256_hex(file)? != want {
+        return Err("the download does not match SHA256SUMS (corrupted or tampered with)".into());
+    }
+    Ok(())
+}
+
 /// Downloads the release file for this copy and puts it in place. A download that is not a program
 /// (an error page, a cut-off file) never replaces anything.
 pub fn apply(rel: &Release) -> Result<Outcome, String> {
@@ -176,7 +205,7 @@ pub fn apply_to(rel: &Release, kind: &Kind) -> Result<Outcome, String> {
             // Next to the target, so the final rename stays on one disk.
             let new = target.with_file_name(format!("{name}.new"));
             download(&asset.url, &new).map_err(|e| format!("download failed: {e}"))?;
-            if let Err(e) = check_program(&new) {
+            if let Err(e) = check_program(&new).and_then(|_| verify(rel, asset, &new)) {
                 let _ = std::fs::remove_file(&new);
                 return Err(e);
             }
@@ -186,7 +215,10 @@ pub fn apply_to(rel: &Release, kind: &Kind) -> Result<Outcome, String> {
         Kind::Installer => {
             let to = std::env::temp_dir().join(&asset.name);
             download(&asset.url, &to).map_err(|e| format!("download failed: {e}"))?;
-            check_program(&to)?;
+            if let Err(e) = check_program(&to).and_then(|_| verify(rel, asset, &to)) {
+                let _ = std::fs::remove_file(&to);
+                return Err(e);
+            }
             Command::new(&to).spawn().map_err(|e| format!("could not start the installer: {e}"))?;
             Ok(Outcome::Quit)
         }
@@ -356,6 +388,49 @@ mod tests {
         assert_eq!(out, Outcome::Restart(target.clone()));
         assert_eq!(std::fs::read(&target).unwrap(), prog);
         assert!(!dir.join("cutline.exe.new").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn reads_a_checksum_list() {
+        let sums = "ABC123  cutline_windows_x64.exe
+0f0f *other.AppImage
+";
+        assert_eq!(expected_sum(sums, "cutline_windows_x64.exe").as_deref(), Some("abc123"));
+        assert_eq!(expected_sum(sums, "other.AppImage").as_deref(), Some("0f0f"));
+        assert_eq!(expected_sum(sums, "missing.exe"), None);
+    }
+
+    #[test]
+    fn a_checksum_mismatch_blocks_the_swap() {
+        let dir = std::env::temp_dir().join(format!("cutline-sums-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (target, served, sums) = (dir.join("cutline.exe"), dir.join("served.exe"), dir.join("SHA256SUMS"));
+        std::fs::write(&target, "old").unwrap();
+        let mut prog = b"MZ".to_vec();
+        prog.resize(1_100_000, 7);
+        std::fs::write(&served, &prog).unwrap();
+        let url = |p: &Path| format!("file:///{}", p.display().to_string().replace('\\', "/").trim_start_matches('/'));
+        let rel = |sums_url: String| Release {
+            tag: "v9.9.9".into(),
+            page: String::new(),
+            assets: vec![
+                Asset { name: "cutline_windows_x64.exe".into(), url: url(&served) },
+                Asset { name: "SHA256SUMS".into(), url: sums_url },
+            ],
+        };
+        // Wrong checksum: refused, and the old file is untouched.
+        std::fs::write(&sums, format!("{}  cutline_windows_x64.exe
+", "0".repeat(64))).unwrap();
+        let err = apply_to(&rel(url(&sums)), &Kind::Portable(target.clone())).unwrap_err();
+        assert!(err.contains("SHA256SUMS"), "{err}");
+        assert_eq!(std::fs::read(&target).unwrap(), b"old");
+        assert!(!dir.join("cutline.exe.new").exists());
+        // Right checksum: swapped.
+        std::fs::write(&sums, format!("{}  cutline_windows_x64.exe
+", sha256_hex(&served).unwrap())).unwrap();
+        assert!(apply_to(&rel(url(&sums)), &Kind::Portable(target.clone())).is_ok());
+        assert_eq!(std::fs::read(&target).unwrap(), prog);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

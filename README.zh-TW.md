@@ -13,6 +13,8 @@
 > - **Windows**:「Windows 已保護您的電腦」→ **其他資訊** → **仍要執行**
 > - **macOS**:系統設定 → 隱私權與安全性 → 找到 Cutline,按 **仍要開啟**;或在終端機執行 `xattr -cr /Applications/Cutline.app`
 > - **Linux**:AppImage 先執行 `chmod +x`;.deb 照一般方式安裝
+>
+> 因為沒有簽章,請自行驗證下載的檔案:見[驗證下載的檔案](#驗證下載的檔案)。
 
 ## 下載
 
@@ -100,10 +102,29 @@ Cutline 啟動時會安靜地檢查一次有沒有新的[版本](https://github.
 | Windows 免安裝 `.exe`、Linux AppImage | 下載新檔案、原地換掉,然後重新啟動 Cutline |
 | `.deb`、`.dmg`、自己編譯的 | 開啟版本頁面,請自行安裝 |
 
-- 下載透過 `curl`,Windows 10 以上、macOS 和桌面版 Linux 都已內建。下載到的若不是程式(中斷或錯誤頁面),不會取代任何東西。
+- 下載透過 `curl`,Windows 10 以上、macOS 和桌面版 Linux 都已內建。下載到的若不是程式(中斷或錯誤頁面),不會取代任何東西。版本若附有 `SHA256SUMS`,下載的檔案還必須與它相符;更早、沒有此檔的版本照舊接受。
 - 設定 `CUTLINE_NO_UPDATE_CHECK=1` 可關閉檢查(托盤項目也會停用)。
 - 換檔需要對檔案所在資料夾有寫入權限。
 - 已測試:版本比較、挑對檔案、下載與換檔(Windows 與 Ubuntu 的單元測試),以及 Linux 上有新版時常駐程式能正常啟動。托盤項目的點擊尚未實測。
+
+## 驗證下載的檔案
+
+每個版本都附有 `SHA256SUMS` 檔和建置證明(GitHub 簽發的紀錄,證明檔案是由本專案的發佈流程建置)。兩者任一都能確認檔案就是流程產出的那一個。
+
+```powershell
+# Windows:和 SHA256SUMS 裡你那個檔案的那一行比對
+Get-FileHash .\cutline_windows_x64.exe -Algorithm SHA256
+```
+
+```bash
+# macOS / Linux,SHA256SUMS 放在同一個資料夾
+sha256sum -c --ignore-missing SHA256SUMS      # macOS:shasum -a 256 -c --ignore-missing SHA256SUMS
+
+# 更可靠:需要 GitHub CLI
+gh attestation verify <檔案> --repo pg56714/cutline
+```
+
+`SHA256SUMS` 和檔案放在同一個版本頁面,所以能發現檔案損毀或被掉包,但擋不住 GitHub 帳號被入侵;建置證明才擋得住。兩者都不能取代程式碼簽章,所以上面的系統警告依然會出現。
 
 ## 支援的平台
 
