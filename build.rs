@@ -14,10 +14,19 @@ fn main() {
     }
     if target.ends_with("-gnu") {
         let out = PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("cutline_res.o");
-        let tool = if target.starts_with("x86_64") { "x86_64-w64-mingw32-windres" } else { "windres" };
+        let tool = if target.starts_with("x86_64") {
+            "x86_64-w64-mingw32-windres"
+        } else {
+            "windres"
+        };
         for exe in [tool, "windres"] {
             let ok = Command::new(exe)
-                .args(["--input", "assets/cutline.rc", "--output-format=coff", "--output"])
+                .args([
+                    "--input",
+                    "assets/cutline.rc",
+                    "--output-format=coff",
+                    "--output",
+                ])
                 .arg(&out)
                 .status()
                 .map(|s| s.success())

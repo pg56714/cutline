@@ -42,7 +42,12 @@ pub struct Script {
 }
 
 fn mods_of(shift: bool, ctrl: bool) -> egui::Modifiers {
-    egui::Modifiers { shift, ctrl, command: ctrl, ..egui::Modifiers::NONE }
+    egui::Modifiers {
+        shift,
+        ctrl,
+        command: ctrl,
+        ..egui::Modifiers::NONE
+    }
 }
 
 pub fn parse(s: &str) -> Script {
@@ -83,12 +88,20 @@ pub fn parse(s: &str) -> Script {
         };
         q.push_back(op);
     }
-    Script { q, wait: 6, pos: Pos2::ZERO, shift: false, ctrl: false }
+    Script {
+        q,
+        wait: 6,
+        pos: Pos2::ZERO,
+        shift: false,
+        ctrl: false,
+    }
 }
 
 impl Overlay {
     pub fn script_step(&mut self, ctx: &Context, raw: &mut egui::RawInput) {
-        let Some(sc) = self.script.as_mut() else { return };
+        let Some(sc) = self.script.as_mut() else {
+            return;
+        };
         ctx.request_repaint();
         if sc.wait > 0 {
             sc.wait -= 1;
@@ -101,11 +114,13 @@ impl Overlay {
             // apart from the key they modify, exactly like a real keyboard.
             Op::Shift(on) => {
                 sc.shift = on;
-                raw.events.push(egui::Event::ModifiersChanged(mods_of(sc.shift, sc.ctrl)));
+                raw.events
+                    .push(egui::Event::ModifiersChanged(mods_of(sc.shift, sc.ctrl)));
             }
             Op::Ctrl(on) => {
                 sc.ctrl = on;
-                raw.events.push(egui::Event::ModifiersChanged(mods_of(sc.shift, sc.ctrl)));
+                raw.events
+                    .push(egui::Event::ModifiersChanged(mods_of(sc.shift, sc.ctrl)));
             }
             Op::Key(key, true) => {
                 sc.q.push_front(Op::Ctrl(false));
@@ -176,19 +191,23 @@ impl Overlay {
                     self.frame.scale
                 );
                 let _ = std::fs::write(crate::frame::temp_dir().join(format!("{name}.txt")), info);
-                ctx.send_viewport_cmd(ViewportCommand::Screenshot(ScreenshotCallback::new(move |img| {
-                    let (w, h) = (img.size[0] as u32, img.size[1] as u32);
-                    let px: Vec<u8> = img.pixels.iter().flat_map(|c| c.to_array()).collect();
-                    if let Some(im) = image::RgbaImage::from_raw(w, h, px) {
-                        let _ = im.save(crate::frame::temp_dir().join(format!("{name}.png")));
-                    }
-                })));
+                ctx.send_viewport_cmd(ViewportCommand::Screenshot(ScreenshotCallback::new(
+                    move |img| {
+                        let (w, h) = (img.size[0] as u32, img.size[1] as u32);
+                        let px: Vec<u8> = img.pixels.iter().flat_map(|c| c.to_array()).collect();
+                        if let Some(im) = image::RgbaImage::from_raw(w, h, px) {
+                            let _ = im.save(crate::frame::temp_dir().join(format!("{name}.png")));
+                        }
+                    },
+                )));
             }
             Op::Close => ctx.send_viewport_cmd(ViewportCommand::Close),
             Op::Btn(name) => {
                 let target = self.sel.and_then(|sel| {
                     let (_, btns, _) = self.layout_bar(sel);
-                    btns.into_iter().find(|(_, b)| btn_name(*b) == name).map(|(r, _)| r.center())
+                    btns.into_iter()
+                        .find(|(_, b)| btn_name(*b) == name)
+                        .map(|(r, _)| r.center())
                 });
                 self.script_click(target, &name);
             }
@@ -196,7 +215,10 @@ impl Overlay {
                 let target = self.sel.and_then(|sel| {
                     let (bar, _, below) = self.layout_bar(sel);
                     let (_, items) = self.layout_sub(bar, below)?;
-                    items.into_iter().find(|(_, s)| sub_name(*s) == name).map(|(r, _)| r.center())
+                    items
+                        .into_iter()
+                        .find(|(_, s)| sub_name(*s) == name)
+                        .map(|(r, _)| r.center())
                 });
                 self.script_click(target, &name);
             }
@@ -205,7 +227,9 @@ impl Overlay {
 
     /// Expand a symbolic click into move / press / release, one per frame.
     fn script_click(&mut self, target: Option<Pos2>, what: &str) {
-        let Some(sc) = self.script.as_mut() else { return };
+        let Some(sc) = self.script.as_mut() else {
+            return;
+        };
         match target {
             Some(c) => {
                 sc.q.push_front(Op::Up);

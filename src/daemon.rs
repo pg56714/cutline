@@ -22,7 +22,10 @@ enum UserEvent {
     Hotkey(GlobalHotKeyEvent),
     Menu(MenuEvent),
     /// A release check finished; `manual` when the user asked for it from the menu.
-    Checked { manual: bool, result: Result<Option<Release>, String> },
+    Checked {
+        manual: bool,
+        result: Result<Option<Release>, String>,
+    },
     /// Downloading and installing the update finished.
     Updated(Result<Outcome, String>),
 }
@@ -63,11 +66,14 @@ fn config_path() -> Option<std::path::PathBuf> {
     let base = if cfg!(windows) {
         std::env::var_os("APPDATA").map(std::path::PathBuf::from)
     } else if cfg!(target_os = "macos") {
-        std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join("Library/Application Support"))
+        std::env::var_os("HOME")
+            .map(|h| std::path::PathBuf::from(h).join("Library/Application Support"))
     } else {
         std::env::var_os("XDG_CONFIG_HOME")
             .map(std::path::PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config")))
+            .or_else(|| {
+                std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config"))
+            })
     };
     base.map(|b| b.join("Cutline").join("config.txt"))
 }
@@ -90,7 +96,10 @@ fn config_hotkey() -> String {
             }
         } else if let Some(dir) = p.parent() {
             let _ = std::fs::create_dir_all(dir);
-            let _ = std::fs::write(&p, "# Cutline settings\n# Examples: F1, F2, ctrl+shift+KeyA\nhotkey = F1\n");
+            let _ = std::fs::write(
+                &p,
+                "# Cutline settings\n# Examples: F1, F2, ctrl+shift+KeyA\nhotkey = F1\n",
+            );
         }
     }
     "F1".to_string()
@@ -121,11 +130,22 @@ fn tray_icon_image() -> Icon {
 
 /// Only one resident instance per user. The lock is released by the OS when we exit.
 fn single_instance() -> Option<std::fs::File> {
-    let user = std::env::var("USERNAME").or_else(|_| std::env::var("USER")).unwrap_or_default();
+    let user = std::env::var("USERNAME")
+        .or_else(|_| std::env::var("USER"))
+        .unwrap_or_default();
     let path = std::env::temp_dir().join(format!("cutline-{user}.lock"));
-    let file = std::fs::OpenOptions::new().create(true).write(true).truncate(false).open(path).ok()?;
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(path)
+        .ok()?;
     // An update starts the new copy while the old one is still shutting down: wait for its lock.
-    let tries = if std::env::var_os("CUTLINE_RESTARTED").is_some() { 50 } else { 1 };
+    let tries = if std::env::var_os("CUTLINE_RESTARTED").is_some() {
+        50
+    } else {
+        1
+    };
     for i in 0..tries {
         if file.try_lock().is_ok() {
             return Some(file);
@@ -138,7 +158,9 @@ fn single_instance() -> Option<std::fs::File> {
 }
 
 pub fn run() {
-    let Some(_lock) = single_instance() else { return };
+    let Some(_lock) = single_instance() else {
+        return;
+    };
     update::tidy();
 
     let hotkey_text = config_hotkey();
@@ -214,7 +236,10 @@ pub fn run() {
                     let proxy = event_loop_proxy.clone();
                     std::thread::spawn(move || {
                         let result = update::check(VERSION);
-                        let _ = proxy.send_event(UserEvent::Checked { manual: false, result });
+                        let _ = proxy.send_event(UserEvent::Checked {
+                            manual: false,
+                            result,
+                        });
                     });
                 }
                 match TrayIconBuilder::new()
@@ -257,9 +282,11 @@ pub fn run() {
                             tray.take();
                             *control_flow = ControlFlow::Exit;
                         }
-                        Err(e) => message_box(&format!("Updated, but Cutline could not restart itself: {e}
+                        Err(e) => message_box(&format!(
+                            "Updated, but Cutline could not restart itself: {e}
 
-Start it again by hand.")),
+Start it again by hand."
+                        )),
                     },
                     Ok(Outcome::Quit) => {
                         tray.take();
@@ -267,7 +294,10 @@ Start it again by hand.")),
                     }
                     Ok(Outcome::OpenPage(url)) => update::open_url(&url),
                     Err(e) => {
-                        update_item.set_text(format!("Update to v{}", found.as_ref().map_or("", |r| r.version())));
+                        update_item.set_text(format!(
+                            "Update to v{}",
+                            found.as_ref().map_or("", |r| r.version())
+                        ));
                         message_box(&format!("Update failed: {e}"));
                     }
                 }
@@ -292,7 +322,10 @@ Start it again by hand.")),
                         let proxy = event_loop_proxy.clone();
                         std::thread::spawn(move || {
                             let result = update::check(VERSION);
-                            let _ = proxy.send_event(UserEvent::Checked { manual: true, result });
+                            let _ = proxy.send_event(UserEvent::Checked {
+                                manual: true,
+                                result,
+                            });
                         });
                     }
                 } else if ev.id == autostart_id {
@@ -376,7 +409,10 @@ fn grab_raw() -> Option<Raw> {
             if win.is_minimized().unwrap_or(true) {
                 continue;
             }
-            let (Ok(wx), Ok(wy), Ok(ww), Ok(wh)) = (win.x(), win.y(), win.width(), win.height()) else { continue };
+            let (Ok(wx), Ok(wy), Ok(ww), Ok(wh)) = (win.x(), win.y(), win.width(), win.height())
+            else {
+                continue;
+            };
             if ww < 24 || wh < 24 {
                 continue;
             }
@@ -420,7 +456,11 @@ fn grab_raw() -> Option<Raw> {
             width: c.w,
             height: c.h,
             rgba: c.rgba,
-            windows: c.windows.iter().map(|w| [w[0] as f32, w[1] as f32, w[2] as f32, w[3] as f32]).collect(),
+            windows: c
+                .windows
+                .iter()
+                .map(|w| [w[0] as f32, w[1] as f32, w[2] as f32, w[3] as f32])
+                .collect(),
         }),
         Err(e) => {
             eprintln!("cutline: screen capture failed: {e}");
@@ -432,16 +472,39 @@ fn grab_raw() -> Option<Raw> {
 fn grab() -> Option<Frame> {
     let raw = grab_raw()?;
     // Windows and Linux report pixels; macOS reports points already.
-    let to_logical = |v: f32| if cfg!(target_os = "macos") { v } else { v / raw.dpi_scale };
+    let to_logical = |v: f32| {
+        if cfg!(target_os = "macos") {
+            v
+        } else {
+            v / raw.dpi_scale
+        }
+    };
     let (x, y) = (to_logical(raw.x), to_logical(raw.y));
     let (lw, lh) = (to_logical(raw.w), to_logical(raw.h));
     let scale = raw.width as f32 / lw.max(1.0);
     let windows = raw
         .windows
         .iter()
-        .map(|w| [to_logical(w[0]), to_logical(w[1]), to_logical(w[2]), to_logical(w[3])])
+        .map(|w| {
+            [
+                to_logical(w[0]),
+                to_logical(w[1]),
+                to_logical(w[2]),
+                to_logical(w[3]),
+            ]
+        })
         .collect();
-    Some(Frame { x, y, lw, lh, width: raw.width, height: raw.height, scale, windows, rgba: raw.rgba })
+    Some(Frame {
+        x,
+        y,
+        lw,
+        lh,
+        width: raw.width,
+        height: raw.height,
+        scale,
+        windows,
+        rgba: raw.rgba,
+    })
 }
 
 fn spawn_capture() -> Option<Child> {
@@ -455,5 +518,9 @@ fn spawn_capture() -> Option<Child> {
             windows_sys::Win32::UI::WindowsAndMessaging::ASFW_ANY,
         );
     }
-    Command::new(std::env::current_exe().ok()?).arg("--capture").arg(path).spawn().ok()
+    Command::new(std::env::current_exe().ok()?)
+        .arg("--capture")
+        .arg(path)
+        .spawn()
+        .ok()
 }

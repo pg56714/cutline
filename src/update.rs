@@ -74,15 +74,22 @@ pub fn is_newer(current: &str, tag: &str) -> bool {
 }
 
 pub fn parse_release(json: &str) -> Result<Release, String> {
-    let v: Value = serde_json::from_str(json).map_err(|e| format!("unreadable release data: {e}"))?;
-    let tag = v["tag_name"].as_str().ok_or("release data has no tag_name")?.to_string();
+    let v: Value =
+        serde_json::from_str(json).map_err(|e| format!("unreadable release data: {e}"))?;
+    let tag = v["tag_name"]
+        .as_str()
+        .ok_or("release data has no tag_name")?
+        .to_string();
     let page = v["html_url"].as_str().unwrap_or(PAGE).to_string();
     let assets = v["assets"]
         .as_array()
         .map(|a| {
             a.iter()
                 .filter_map(|x| {
-                    Some(Asset { name: x["name"].as_str()?.to_string(), url: x["browser_download_url"].as_str()?.to_string() })
+                    Some(Asset {
+                        name: x["name"].as_str()?.to_string(),
+                        url: x["browser_download_url"].as_str()?.to_string(),
+                    })
                 })
                 .collect()
         })
@@ -92,7 +99,13 @@ pub fn parse_release(json: &str) -> Result<Release, String> {
 
 fn curl() -> Command {
     let mut c = Command::new("curl");
-    c.args(["-fsSL", "-H", "User-Agent: cutline", "-H", "Accept: application/vnd.github+json"]);
+    c.args([
+        "-fsSL",
+        "-H",
+        "User-Agent: cutline",
+        "-H",
+        "Accept: application/vnd.github+json",
+    ]);
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -102,12 +115,24 @@ fn curl() -> Command {
 }
 
 fn fetch_text(url: &str) -> Result<String, String> {
-    let o = curl().args(["--max-time", "30", url]).output().map_err(|e| format!("curl not found: {e}"))?;
-    if o.status.success() { Ok(String::from_utf8_lossy(&o.stdout).into_owned()) } else { Err(String::from_utf8_lossy(&o.stderr).trim().to_string()) }
+    let o = curl()
+        .args(["--max-time", "30", url])
+        .output()
+        .map_err(|e| format!("curl not found: {e}"))?;
+    if o.status.success() {
+        Ok(String::from_utf8_lossy(&o.stdout).into_owned())
+    } else {
+        Err(String::from_utf8_lossy(&o.stderr).trim().to_string())
+    }
 }
 
 fn download(url: &str, to: &Path) -> Result<(), String> {
-    let o = curl().args(["--max-time", "900", "-o"]).arg(to).arg(url).output().map_err(|e| format!("curl not found: {e}"))?;
+    let o = curl()
+        .args(["--max-time", "900", "-o"])
+        .arg(to)
+        .arg(url)
+        .output()
+        .map_err(|e| format!("curl not found: {e}"))?;
     if o.status.success() {
         Ok(())
     } else {
@@ -144,8 +169,14 @@ pub fn kind() -> Kind {
             return Kind::Manual;
         }
         // The NSIS installer puts an uninstaller next to the exe.
-        let installed = s.contains("\\program files") || s.contains("\\appdata\\local\\programs\\") || exe.with_file_name("uninstall.exe").exists();
-        return if installed { Kind::Installer } else { Kind::Portable(exe) };
+        let installed = s.contains("\\program files")
+            || s.contains("\\appdata\\local\\programs\\")
+            || exe.with_file_name("uninstall.exe").exists();
+        return if installed {
+            Kind::Installer
+        } else {
+            Kind::Portable(exe)
+        };
     }
     Kind::Manual
 }
@@ -154,7 +185,10 @@ pub fn kind() -> Kind {
 pub fn asset_for<'a>(rel: &'a Release, kind: &Kind) -> Option<&'a Asset> {
     let find = |f: &dyn Fn(&str) -> bool| rel.assets.iter().find(|a| f(&a.name.to_lowercase()));
     match kind {
-        Kind::AppImage(_) => find(&|n| n.ends_with(".appimage") && (n.contains("x86_64") || n.contains("amd64") || !cfg!(target_arch = "aarch64"))),
+        Kind::AppImage(_) => find(&|n| {
+            n.ends_with(".appimage")
+                && (n.contains("x86_64") || n.contains("amd64") || !cfg!(target_arch = "aarch64"))
+        }),
         Kind::Installer => find(&|n| n.ends_with("-setup.exe")),
         Kind::Portable(_) => find(&|n| n.ends_with(".exe") && !n.contains("setup")),
         Kind::Manual => None,
@@ -181,9 +215,12 @@ fn sha256_hex(p: &Path) -> Result<String, String> {
 /// (made before it existed) is accepted; one that has it but does not list this file, or lists a
 /// different checksum, is refused.
 fn verify(rel: &Release, asset: &Asset, file: &Path) -> Result<(), String> {
-    let Some(sums) = rel.assets.iter().find(|a| a.name == "SHA256SUMS") else { return Ok(()) };
+    let Some(sums) = rel.assets.iter().find(|a| a.name == "SHA256SUMS") else {
+        return Ok(());
+    };
     let text = fetch_text(&sums.url).map_err(|e| format!("could not fetch SHA256SUMS: {e}"))?;
-    let want = expected_sum(&text, &asset.name).ok_or_else(|| format!("SHA256SUMS does not list {}", asset.name))?;
+    let want = expected_sum(&text, &asset.name)
+        .ok_or_else(|| format!("SHA256SUMS does not list {}", asset.name))?;
     if sha256_hex(file)? != want {
         return Err("the download does not match SHA256SUMS (corrupted or tampered with)".into());
     }
@@ -197,11 +234,22 @@ pub fn apply(rel: &Release) -> Result<Outcome, String> {
 }
 
 pub fn apply_to(rel: &Release, kind: &Kind) -> Result<Outcome, String> {
-    let page = || Outcome::OpenPage(if rel.page.is_empty() { PAGE.to_string() } else { rel.page.clone() });
-    let Some(asset) = asset_for(rel, kind) else { return Ok(page()) };
+    let page = || {
+        Outcome::OpenPage(if rel.page.is_empty() {
+            PAGE.to_string()
+        } else {
+            rel.page.clone()
+        })
+    };
+    let Some(asset) = asset_for(rel, kind) else {
+        return Ok(page());
+    };
     match kind {
         Kind::AppImage(target) | Kind::Portable(target) => {
-            let name = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            let name = target
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
             // Next to the target, so the final rename stays on one disk.
             let new = target.with_file_name(format!("{name}.new"));
             download(&asset.url, &new).map_err(|e| format!("download failed: {e}"))?;
@@ -219,7 +267,9 @@ pub fn apply_to(rel: &Release, kind: &Kind) -> Result<Outcome, String> {
                 let _ = std::fs::remove_file(&to);
                 return Err(e);
             }
-            Command::new(&to).spawn().map_err(|e| format!("could not start the installer: {e}"))?;
+            Command::new(&to)
+                .spawn()
+                .map_err(|e| format!("could not start the installer: {e}"))?;
             Ok(Outcome::Quit)
         }
         Kind::Manual => Ok(page()),
@@ -232,7 +282,8 @@ fn check_program(p: &Path) -> Result<(), String> {
     let mut head = [0u8; 4];
     let mut f = std::fs::File::open(p).map_err(|e| e.to_string())?;
     let len = f.metadata().map_err(|e| e.to_string())?.len();
-    f.read_exact(&mut head).map_err(|_| "the download is incomplete".to_string())?;
+    f.read_exact(&mut head)
+        .map_err(|_| "the download is incomplete".to_string())?;
     if len < 1_000_000 || !(head == *b"\x7fELF" || head[..2] == *b"MZ") {
         return Err("the download is not a program (interrupted, or an error page)".into());
     }
@@ -245,9 +296,13 @@ fn replace(new: &Path, target: &Path) -> Result<(), String> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(new, std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
+        std::fs::set_permissions(new, std::fs::Permissions::from_mode(0o755))
+            .map_err(|e| e.to_string())?;
     }
-    let name = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let name = target
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
     let old = target.with_file_name(format!("{name}.old"));
     let _ = std::fs::remove_file(&old);
     std::fs::rename(target, &old).map_err(|e| format!("could not move the old file aside: {e}"))?;
@@ -262,7 +317,10 @@ fn replace(new: &Path, target: &Path) -> Result<(), String> {
 /// Removes what a finished update left next to the program (the old file).
 pub fn tidy() {
     if let Kind::AppImage(p) | Kind::Portable(p) = kind() {
-        let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let name = p
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         let _ = std::fs::remove_file(p.with_file_name(format!("{name}.old")));
     }
 }
@@ -285,7 +343,8 @@ pub fn open_url(url: &str) {
     let mut c = {
         use std::os::windows::process::CommandExt;
         let mut c = Command::new("rundll32");
-        c.args(["url.dll,FileProtocolHandler", url]).creation_flags(0x0800_0000);
+        c.args(["url.dll,FileProtocolHandler", url])
+            .creation_flags(0x0800_0000);
         c
     };
     #[cfg(target_os = "macos")]
@@ -343,15 +402,27 @@ mod tests {
     fn picks_the_file_for_each_kind() {
         let r = release();
         let name = |k: &Kind| asset_for(&r, k).map(|a| a.name.clone());
-        assert_eq!(name(&Kind::AppImage("x".into())).as_deref(), Some("cutline_9.9.9_x86_64.AppImage"));
-        assert_eq!(name(&Kind::Installer).as_deref(), Some("cutline_9.9.9_x64-setup.exe"));
-        assert_eq!(name(&Kind::Portable("x".into())).as_deref(), Some("cutline_windows_x64.exe"));
+        assert_eq!(
+            name(&Kind::AppImage("x".into())).as_deref(),
+            Some("cutline_9.9.9_x86_64.AppImage")
+        );
+        assert_eq!(
+            name(&Kind::Installer).as_deref(),
+            Some("cutline_9.9.9_x64-setup.exe")
+        );
+        assert_eq!(
+            name(&Kind::Portable("x".into())).as_deref(),
+            Some("cutline_windows_x64.exe")
+        );
         assert_eq!(name(&Kind::Manual), None);
     }
 
     #[test]
     fn manual_installs_open_the_release_page() {
-        assert_eq!(apply_to(&release(), &Kind::Manual), Ok(Outcome::OpenPage("https://example.test/r".into())));
+        assert_eq!(
+            apply_to(&release(), &Kind::Manual),
+            Ok(Outcome::OpenPage("https://example.test/r".into()))
+        );
     }
 
     #[test]
@@ -378,11 +449,21 @@ mod tests {
         prog.resize(1_100_000, 7);
         std::fs::write(&served, &prog).unwrap();
         // curl reads file:// URLs, so no server is needed.
-        let url = format!("file:///{}", served.display().to_string().replace('\\', "/").trim_start_matches('/'));
+        let url = format!(
+            "file:///{}",
+            served
+                .display()
+                .to_string()
+                .replace('\\', "/")
+                .trim_start_matches('/')
+        );
         let rel = Release {
             tag: "v9.9.9".into(),
             page: String::new(),
-            assets: vec![Asset { name: "cutline_windows_x64.exe".into(), url }],
+            assets: vec![Asset {
+                name: "cutline_windows_x64.exe".into(),
+                url,
+            }],
         };
         let out = apply_to(&rel, &Kind::Portable(target.clone())).unwrap();
         assert_eq!(out, Outcome::Restart(target.clone()));
@@ -396,8 +477,14 @@ mod tests {
         let sums = "ABC123  cutline_windows_x64.exe
 0f0f *other.AppImage
 ";
-        assert_eq!(expected_sum(sums, "cutline_windows_x64.exe").as_deref(), Some("abc123"));
-        assert_eq!(expected_sum(sums, "other.AppImage").as_deref(), Some("0f0f"));
+        assert_eq!(
+            expected_sum(sums, "cutline_windows_x64.exe").as_deref(),
+            Some("abc123")
+        );
+        assert_eq!(
+            expected_sum(sums, "other.AppImage").as_deref(),
+            Some("0f0f")
+        );
         assert_eq!(expected_sum(sums, "missing.exe"), None);
     }
 
@@ -405,30 +492,62 @@ mod tests {
     fn a_checksum_mismatch_blocks_the_swap() {
         let dir = std::env::temp_dir().join(format!("cutline-sums-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let (target, served, sums) = (dir.join("cutline.exe"), dir.join("served.exe"), dir.join("SHA256SUMS"));
+        let (target, served, sums) = (
+            dir.join("cutline.exe"),
+            dir.join("served.exe"),
+            dir.join("SHA256SUMS"),
+        );
         std::fs::write(&target, "old").unwrap();
         let mut prog = b"MZ".to_vec();
         prog.resize(1_100_000, 7);
         std::fs::write(&served, &prog).unwrap();
-        let url = |p: &Path| format!("file:///{}", p.display().to_string().replace('\\', "/").trim_start_matches('/'));
+        let url = |p: &Path| {
+            format!(
+                "file:///{}",
+                p.display()
+                    .to_string()
+                    .replace('\\', "/")
+                    .trim_start_matches('/')
+            )
+        };
         let rel = |sums_url: String| Release {
             tag: "v9.9.9".into(),
             page: String::new(),
             assets: vec![
-                Asset { name: "cutline_windows_x64.exe".into(), url: url(&served) },
-                Asset { name: "SHA256SUMS".into(), url: sums_url },
+                Asset {
+                    name: "cutline_windows_x64.exe".into(),
+                    url: url(&served),
+                },
+                Asset {
+                    name: "SHA256SUMS".into(),
+                    url: sums_url,
+                },
             ],
         };
         // Wrong checksum: refused, and the old file is untouched.
-        std::fs::write(&sums, format!("{}  cutline_windows_x64.exe
-", "0".repeat(64))).unwrap();
+        std::fs::write(
+            &sums,
+            format!(
+                "{}  cutline_windows_x64.exe
+",
+                "0".repeat(64)
+            ),
+        )
+        .unwrap();
         let err = apply_to(&rel(url(&sums)), &Kind::Portable(target.clone())).unwrap_err();
         assert!(err.contains("SHA256SUMS"), "{err}");
         assert_eq!(std::fs::read(&target).unwrap(), b"old");
         assert!(!dir.join("cutline.exe.new").exists());
         // Right checksum: swapped.
-        std::fs::write(&sums, format!("{}  cutline_windows_x64.exe
-", sha256_hex(&served).unwrap())).unwrap();
+        std::fs::write(
+            &sums,
+            format!(
+                "{}  cutline_windows_x64.exe
+",
+                sha256_hex(&served).unwrap()
+            ),
+        )
+        .unwrap();
         assert!(apply_to(&rel(url(&sums)), &Kind::Portable(target.clone())).is_ok());
         assert_eq!(std::fs::read(&target).unwrap(), prog);
         let _ = std::fs::remove_dir_all(&dir);
@@ -443,7 +562,10 @@ mod tests {
         std::fs::write(&new, "new").unwrap();
         replace(&new, &target).unwrap();
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "new");
-        assert_eq!(std::fs::read_to_string(dir.join("cutline.exe.old")).unwrap(), "old");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("cutline.exe.old")).unwrap(),
+            "old"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

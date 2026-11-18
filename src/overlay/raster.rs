@@ -28,7 +28,14 @@ impl Textures {
                 let linear = d.options.magnification == TextureFilter::Linear;
                 match d.pos {
                     None => {
-                        self.0.insert(*id, Tex { size: img.size, pixels: img.pixels.clone(), linear });
+                        self.0.insert(
+                            *id,
+                            Tex {
+                                size: img.size,
+                                pixels: img.pixels.clone(),
+                                linear,
+                            },
+                        );
                     }
                     Some([px, py]) => {
                         if let Some(t) = self.0.get_mut(id) {
@@ -107,10 +114,19 @@ pub fn draw(
     prims: &[ClippedPrimitive],
     texs: &Textures,
 ) {
-    let to_px = |x: f32, y: f32| ((x - origin_pt.0) * ppp - offset_px.0, (y - origin_pt.1) * ppp - offset_px.1);
+    let to_px = |x: f32, y: f32| {
+        (
+            (x - origin_pt.0) * ppp - offset_px.0,
+            (y - origin_pt.1) * ppp - offset_px.1,
+        )
+    };
     for prim in prims {
-        let Primitive::Mesh(mesh) = &prim.primitive else { continue };
-        let Some(tex) = texs.0.get(&mesh.texture_id) else { continue };
+        let Primitive::Mesh(mesh) = &prim.primitive else {
+            continue;
+        };
+        let Some(tex) = texs.0.get(&mesh.texture_id) else {
+            continue;
+        };
 
         let (cx0, cy0) = to_px(prim.clip_rect.min.x, prim.clip_rect.min.y);
         let (cx1, cy1) = to_px(prim.clip_rect.max.x, prim.clip_rect.max.y);
@@ -128,12 +144,22 @@ pub fn draw(
             .map(|v: &Vertex| {
                 let (x, y) = to_px(v.pos.x, v.pos.y);
                 let [r, g, b, a] = v.color.to_array();
-                P { x, y, u: v.uv.x, v: v.uv.y, c: [r as f32, g as f32, b as f32, a as f32] }
+                P {
+                    x,
+                    y,
+                    u: v.uv.x,
+                    v: v.uv.y,
+                    c: [r as f32, g as f32, b as f32, a as f32],
+                }
             })
             .collect();
 
         for tri in mesh.indices.chunks_exact(3) {
-            let (a, mut b, mut c) = (pts[tri[0] as usize], pts[tri[1] as usize], pts[tri[2] as usize]);
+            let (a, mut b, mut c) = (
+                pts[tri[0] as usize],
+                pts[tri[1] as usize],
+                pts[tri[2] as usize],
+            );
             let mut area = edge(&a, &b, c.x, c.y);
             if area == 0.0 || !area.is_finite() {
                 continue;
@@ -152,7 +178,11 @@ pub fn draw(
                 let py = y as f32 + 0.5;
                 for x in min_x..max_x {
                     let px = x as f32 + 0.5;
-                    let (w0, w1, w2) = (edge(&b, &c, px, py), edge(&c, &a, px, py), edge(&a, &b, px, py));
+                    let (w0, w1, w2) = (
+                        edge(&b, &c, px, py),
+                        edge(&c, &a, px, py),
+                        edge(&a, &b, px, py),
+                    );
                     let inside = (w0 > 0.0 || (w0 == 0.0 && own0))
                         && (w1 > 0.0 || (w1 == 0.0 && own1))
                         && (w2 > 0.0 || (w2 == 0.0 && own2));
@@ -171,7 +201,8 @@ pub fn draw(
                     let inv_a = 1.0 - s[3] / 255.0;
                     let o = (y * w + x) * 4;
                     for i in 0..3 {
-                        dst[o + i] = (s[i] + dst[o + i] as f32 * inv_a).round().clamp(0.0, 255.0) as u8;
+                        dst[o + i] =
+                            (s[i] + dst[o + i] as f32 * inv_a).round().clamp(0.0, 255.0) as u8;
                     }
                 }
             }

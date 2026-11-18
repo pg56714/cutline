@@ -22,14 +22,21 @@ pub enum Kind {
 #[cfg(windows)]
 pub fn disable_transitions() {
     use windows_sys::Win32::Foundation::{HWND, LPARAM};
-    use windows_sys::Win32::Graphics::Dwm::{DWMWA_TRANSITIONS_FORCEDISABLED, DwmSetWindowAttribute};
+    use windows_sys::Win32::Graphics::Dwm::{
+        DWMWA_TRANSITIONS_FORCEDISABLED, DwmSetWindowAttribute,
+    };
     use windows_sys::Win32::System::Threading::GetCurrentThreadId;
     use windows_sys::Win32::UI::WindowsAndMessaging::EnumThreadWindows;
 
     unsafe extern "system" fn each(hwnd: HWND, _: LPARAM) -> i32 {
         let on: i32 = 1;
         unsafe {
-            DwmSetWindowAttribute(hwnd, DWMWA_TRANSITIONS_FORCEDISABLED as u32, &on as *const i32 as *const _, 4);
+            DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_TRANSITIONS_FORCEDISABLED as u32,
+                &on as *const i32 as *const _,
+                4,
+            );
         }
         1
     }
@@ -54,14 +61,19 @@ pub fn own_pixels(frame: &eframe::Frame, kind: Kind) {
     };
     use windows_sys::Win32::UI::Controls::MARGINS;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        CallWindowProcW, GWLP_WNDPROC, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
-        SetWindowLongPtrW, SetWindowPos, WM_NCCALCSIZE, WNDPROC,
+        CallWindowProcW, GWLP_WNDPROC, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+        SWP_NOZORDER, SetWindowLongPtrW, SetWindowPos, WM_NCCALCSIZE, WNDPROC,
     };
 
     /// winit's window procedure, which ours wraps.
     static WINIT_PROC: AtomicIsize = AtomicIsize::new(0);
 
-    unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    unsafe extern "system" fn proc(
+        hwnd: HWND,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> LRESULT {
         // Answering 0 without touching the rectangle keeps the one Windows proposes: the whole
         // window. winit would move it down a pixel here.
         if msg == WM_NCCALCSIZE && wparam != 0 {
@@ -71,8 +83,12 @@ pub fn own_pixels(frame: &eframe::Frame, kind: Kind) {
         unsafe { CallWindowProcW(prev, hwnd, msg, wparam, lparam) }
     }
 
-    let Ok(handle) = frame.window_handle() else { return };
-    let RawWindowHandle::Win32(win) = handle.as_raw() else { return };
+    let Ok(handle) = frame.window_handle() else {
+        return;
+    };
+    let RawWindowHandle::Win32(win) = handle.as_raw() else {
+        return;
+    };
     let hwnd = win.hwnd.get() as HWND;
     if WINIT_PROC.load(Ordering::Relaxed) != 0 {
         return;
@@ -80,9 +96,19 @@ pub fn own_pixels(frame: &eframe::Frame, kind: Kind) {
     unsafe {
         // Both attributes are Windows 11 only; older systems refuse them and have nothing to undo.
         let square: i32 = DWMWCP_DONOTROUND;
-        DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE as u32, &square as *const i32 as *const _, 4);
+        DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_WINDOW_CORNER_PREFERENCE as u32,
+            &square as *const i32 as *const _,
+            4,
+        );
         let none: u32 = DWMWA_COLOR_NONE;
-        DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR as u32, &none as *const u32 as *const _, 4);
+        DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_BORDER_COLOR as u32,
+            &none as *const u32 as *const _,
+            4,
+        );
 
         let prev = SetWindowLongPtrW(hwnd, GWLP_WNDPROC, proc as *const () as usize as _);
         WINIT_PROC.store(prev as isize, Ordering::Relaxed);
@@ -92,7 +118,12 @@ pub fn own_pixels(frame: &eframe::Frame, kind: Kind) {
         if kind == Kind::Pin {
             // Windows only shadows a window that has some frame. One row of it under the bottom of
             // the client area is enough, and stays hidden behind the picture.
-            let frame = MARGINS { cxLeftWidth: 0, cxRightWidth: 0, cyTopHeight: 0, cyBottomHeight: 1 };
+            let frame = MARGINS {
+                cxLeftWidth: 0,
+                cxRightWidth: 0,
+                cyTopHeight: 0,
+                cyBottomHeight: 1,
+            };
             DwmExtendFrameIntoClientArea(hwnd, &frame);
         }
     }

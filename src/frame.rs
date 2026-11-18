@@ -84,6 +84,16 @@ impl Frame {
         }
         let mut rgba = vec![0u8; (width as usize) * (height as usize) * 4];
         f.read_exact(&mut rgba)?;
-        Ok(Frame { x, y, lw, lh, width, height, scale, windows, rgba })
+        Ok(Frame {
+            x,
+            y,
+            lw,
+            lh,
+            width,
+            height,
+            scale,
+            windows,
+            rgba,
+        })
     }
 }

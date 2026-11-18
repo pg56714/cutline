@@ -6,7 +6,9 @@
 
 use x11rb::connection::Connection;
 use x11rb::protocol::randr::ConnectionExt as _;
-use x11rb::protocol::xproto::{AtomEnum, ConnectionExt as _, ImageFormat, ImageOrder, MapState, Window};
+use x11rb::protocol::xproto::{
+    AtomEnum, ConnectionExt as _, ImageFormat, ImageOrder, MapState, Window,
+};
 use x11rb::rust_connection::RustConnection;
 
 type Res<T> = Result<T, Box<dyn std::error::Error>>;
@@ -31,7 +33,9 @@ pub fn is_wayland() -> bool {
     if std::env::var_os("CUTLINE_FORCE_X11").is_some() {
         return false;
     }
-    std::env::var("XDG_SESSION_TYPE").map(|v| v.eq_ignore_ascii_case("wayland")).unwrap_or(false)
+    std::env::var("XDG_SESSION_TYPE")
+        .map(|v| v.eq_ignore_ascii_case("wayland"))
+        .unwrap_or(false)
         || std::env::var_os("WAYLAND_DISPLAY").is_some()
 }
 
@@ -43,11 +47,19 @@ pub fn grab() -> Res<Capture> {
     // The monitor under the cursor; the whole screen if RandR cannot tell.
     let ptr = conn.query_pointer(root)?.reply()?;
     let (px, py) = (ptr.root_x as i32, ptr.root_y as i32);
-    let mut mon = (0i32, 0i32, screen.width_in_pixels as u32, screen.height_in_pixels as u32);
+    let mut mon = (
+        0i32,
+        0i32,
+        screen.width_in_pixels as u32,
+        screen.height_in_pixels as u32,
+    );
     if let Ok(cookie) = conn.randr_get_monitors(root, true) {
         if let Ok(rep) = cookie.reply() {
             let under_cursor = |m: &&x11rb::protocol::randr::MonitorInfo| {
-                px >= m.x as i32 && px < m.x as i32 + m.width as i32 && py >= m.y as i32 && py < m.y as i32 + m.height as i32
+                px >= m.x as i32
+                    && px < m.x as i32 + m.width as i32
+                    && py >= m.y as i32
+                    && py < m.y as i32 + m.height as i32
             };
             let pick = rep
                 .monitors
@@ -62,7 +74,15 @@ pub fn grab() -> Res<Capture> {
     }
 
     let img = conn
-        .get_image(ImageFormat::Z_PIXMAP, root, mon.0 as i16, mon.1 as i16, mon.2 as u16, mon.3 as u16, !0)?
+        .get_image(
+            ImageFormat::Z_PIXMAP,
+            root,
+            mon.0 as i16,
+            mon.1 as i16,
+            mon.2 as u16,
+            mon.3 as u16,
+            !0,
+        )?
         .reply()?;
     let fmt = conn
         .setup()
@@ -71,7 +91,11 @@ pub fn grab() -> Res<Capture> {
         .find(|f| f.depth == img.depth)
         .ok_or("the X server reported no pixmap format for the root window")?;
     if fmt.bits_per_pixel != 32 {
-        return Err(format!("unsupported X pixel format ({} bits per pixel)", fmt.bits_per_pixel).into());
+        return Err(format!(
+            "unsupported X pixel format ({} bits per pixel)",
+            fmt.bits_per_pixel
+        )
+        .into());
     }
     let n = (mon.2 * mon.3) as usize;
     if img.data.len() < n * 4 {
@@ -101,13 +125,23 @@ pub fn grab() -> Res<Capture> {
 
 /// Same idea as winit: an explicit override first, then the `Xft.dpi` X resource.
 fn dpi_scale(conn: &RustConnection, root: Window) -> f32 {
-    if let Some(f) = std::env::var("WINIT_X11_SCALE_FACTOR").ok().and_then(|v| v.parse::<f32>().ok()) {
+    if let Some(f) = std::env::var("WINIT_X11_SCALE_FACTOR")
+        .ok()
+        .and_then(|v| v.parse::<f32>().ok())
+    {
         if f > 0.0 {
             return f;
         }
     }
     let text = conn
-        .get_property(false, root, AtomEnum::RESOURCE_MANAGER, AtomEnum::STRING, 0, 1 << 16)
+        .get_property(
+            false,
+            root,
+            AtomEnum::RESOURCE_MANAGER,
+            AtomEnum::STRING,
+            0,
+            1 << 16,
+        )
         .ok()
         .and_then(|c| c.reply().ok())
         .map(|r| String::from_utf8_lossy(&r.value).into_owned())
@@ -125,12 +159,20 @@ fn dpi_scale(conn: &RustConnection, root: Window) -> f32 {
 }
 
 fn atom(conn: &RustConnection, name: &[u8]) -> Option<u32> {
-    conn.intern_atom(false, name).ok()?.reply().ok().map(|r| r.atom)
+    conn.intern_atom(false, name)
+        .ok()?
+        .reply()
+        .ok()
+        .map(|r| r.atom)
 }
 
 fn title(conn: &RustConnection, w: Window, net_wm_name: Option<u32>, utf8: Option<u32>) -> String {
     if let (Some(n), Some(u)) = (net_wm_name, utf8) {
-        if let Some(r) = conn.get_property(false, w, n, u, 0, 256).ok().and_then(|c| c.reply().ok()) {
+        if let Some(r) = conn
+            .get_property(false, w, n, u, 0, 256)
+            .ok()
+            .and_then(|c| c.reply().ok())
+        {
             if !r.value.is_empty() {
                 return String::from_utf8_lossy(&r.value).into_owned();
             }
@@ -154,7 +196,11 @@ fn windows(conn: &RustConnection, root: Window) -> Vec<[i32; 4]> {
     // A window manager that speaks EWMH lists client windows bottom to top.
     let mut ids: Vec<Window> = Vec::new();
     if let Some(a) = net_list {
-        if let Some(r) = conn.get_property(false, root, a, AtomEnum::WINDOW, 0, 8192).ok().and_then(|c| c.reply().ok()) {
+        if let Some(r) = conn
+            .get_property(false, root, a, AtomEnum::WINDOW, 0, 8192)
+            .ok()
+            .and_then(|c| c.reply().ok())
+        {
             if let Some(it) = r.value32() {
                 ids = it.collect();
             }
@@ -170,7 +216,13 @@ fn windows(conn: &RustConnection, root: Window) -> Vec<[i32; 4]> {
 
     let mut out = Vec::new();
     for w in ids {
-        let Some(attrs) = conn.get_window_attributes(w).ok().and_then(|c| c.reply().ok()) else { continue };
+        let Some(attrs) = conn
+            .get_window_attributes(w)
+            .ok()
+            .and_then(|c| c.reply().ok())
+        else {
+            continue;
+        };
         if attrs.map_state != MapState::VIEWABLE {
             continue;
         }
@@ -185,7 +237,9 @@ fn windows(conn: &RustConnection, root: Window) -> Vec<[i32; 4]> {
                 continue;
             }
         }
-        let Some(geo) = conn.get_geometry(w).ok().and_then(|c| c.reply().ok()) else { continue };
+        let Some(geo) = conn.get_geometry(w).ok().and_then(|c| c.reply().ok()) else {
+            continue;
+        };
         if geo.width < 24 || geo.height < 24 {
             continue;
         }
@@ -193,8 +247,19 @@ fn windows(conn: &RustConnection, root: Window) -> Vec<[i32; 4]> {
             continue;
         }
         // Geometry is relative to the parent, which is a decoration frame under most window managers.
-        let Some(pos) = conn.translate_coordinates(w, root, 0, 0).ok().and_then(|c| c.reply().ok()) else { continue };
-        out.push([pos.dst_x as i32, pos.dst_y as i32, geo.width as i32, geo.height as i32]);
+        let Some(pos) = conn
+            .translate_coordinates(w, root, 0, 0)
+            .ok()
+            .and_then(|c| c.reply().ok())
+        else {
+            continue;
+        };
+        out.push([
+            pos.dst_x as i32,
+            pos.dst_y as i32,
+            geo.width as i32,
+            geo.height as i32,
+        ]);
     }
     out
 }

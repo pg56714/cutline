@@ -9,9 +9,9 @@
 
 use crate::frame::Frame;
 use eframe::egui::{
-    self, Align2, Color32, ColorImage, Context, CursorIcon, FontId, Id, Key, LayerId, Order, Painter,
-    Pos2, Rect, Shape, Stroke, StrokeKind, TextureHandle, TextureOptions, Ui,
-    Vec2, ViewportBuilder, ViewportCommand, pos2, vec2,
+    self, Align2, Color32, ColorImage, Context, CursorIcon, FontId, Id, Key, LayerId, Order,
+    Painter, Pos2, Rect, Shape, Stroke, StrokeKind, TextureHandle, TextureOptions, Ui, Vec2,
+    ViewportBuilder, ViewportCommand, pos2, vec2,
 };
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -98,25 +98,66 @@ enum Action {
 
 #[derive(Clone, Debug)]
 enum Annot {
-    Rect { r: Rect, c: Color32, w: f32, ellipse: bool },
-    Line { a: Pos2, b: Pos2, c: Color32, w: f32, arrow: bool },
-    Pen { pts: Vec<Pos2>, c: Color32, w: f32 },
-    Highlight { pts: Vec<Pos2>, c: Color32, w: f32 },
-    Mosaic { r: Rect },
-    Text { pos: Pos2, text: String, c: Color32, size: f32, wrap: f32, bounds: Rect },
+    Rect {
+        r: Rect,
+        c: Color32,
+        w: f32,
+        ellipse: bool,
+    },
+    Line {
+        a: Pos2,
+        b: Pos2,
+        c: Color32,
+        w: f32,
+        arrow: bool,
+    },
+    Pen {
+        pts: Vec<Pos2>,
+        c: Color32,
+        w: f32,
+    },
+    Highlight {
+        pts: Vec<Pos2>,
+        c: Color32,
+        w: f32,
+    },
+    Mosaic {
+        r: Rect,
+    },
+    Text {
+        pos: Pos2,
+        text: String,
+        c: Color32,
+        size: f32,
+        wrap: f32,
+        bounds: Rect,
+    },
 }
 
 enum Drag {
     None,
-    NewSel { start: Pos2 },
-    Move { grab: Vec2 },
-    Resize { h: (i8, i8), orig: Rect },
-    Draw { start: Pos2 },
+    NewSel {
+        start: Pos2,
+    },
+    Move {
+        grab: Vec2,
+    },
+    Resize {
+        h: (i8, i8),
+        orig: Rect,
+    },
+    Draw {
+        start: Pos2,
+    },
     Erase,
     /// Dragging the text box's right-edge handle; `grab` = pointer x minus the box's right edge.
-    TextWidth { grab: f32 },
+    TextWidth {
+        grab: f32,
+    },
     /// Dragging the text box by its frame; `grab` = pointer minus the text origin.
-    TextMove { grab: Vec2 },
+    TextMove {
+        grab: Vec2,
+    },
 }
 
 struct Editing {
@@ -202,12 +243,20 @@ struct Overlay {
 /// one-frame changes. The monitor's last row shows through live; it is still part of the frozen
 /// picture, so it can be selected and is exported.
 fn bottom_gap(scale: f32) -> f32 {
-    if cfg!(windows) { 1.0 / scale.max(0.25) } else { 0.0 }
+    if cfg!(windows) {
+        1.0 / scale.max(0.25)
+    } else {
+        0.0
+    }
 }
 
 pub fn run(args: &[String]) {
-    let Some(path) = args.first().map(std::path::PathBuf::from) else { return };
-    let Ok(frame) = Frame::read(&path) else { return };
+    let Some(path) = args.first().map(std::path::PathBuf::from) else {
+        return;
+    };
+    let Ok(frame) = Frame::read(&path) else {
+        return;
+    };
     let _ = std::fs::remove_file(&path);
 
     let pos = pos2(frame.x, frame.y);
@@ -237,14 +286,20 @@ pub fn run(args: &[String]) {
 
 impl Overlay {
     fn new(cc: &eframe::CreationContext<'_>, frame: Frame, win_pos: Pos2, size: Vec2) -> Self {
-        let ci = ColorImage::from_rgba_unmultiplied([frame.width as usize, frame.height as usize], &frame.rgba);
-        let tex = cc.egui_ctx.load_texture("shot", ci, TextureOptions::NEAREST);
+        let ci = ColorImage::from_rgba_unmultiplied(
+            [frame.width as usize, frame.height as usize],
+            &frame.rgba,
+        );
+        let tex = cc
+            .egui_ctx
+            .load_texture("shot", ci, TextureOptions::NEAREST);
         let screen = Rect::from_min_size(Pos2::ZERO, size);
         let windows = frame
             .windows
             .iter()
             .filter_map(|w| {
-                let r = Rect::from_min_size(pos2(w[0] - frame.x, w[1] - frame.y), vec2(w[2], w[3])).intersect(screen);
+                let r = Rect::from_min_size(pos2(w[0] - frame.x, w[1] - frame.y), vec2(w[2], w[3]))
+                    .intersect(screen);
                 (r.width() > 8.0 && r.height() > 8.0).then_some(r)
             })
             .collect();
@@ -284,7 +339,9 @@ impl Overlay {
             save_job: None,
             frames: 0,
             #[cfg(any(debug_assertions, feature = "devscript"))]
-            script: std::env::var("CUTLINE_SCRIPT").ok().map(|s| devscript::parse(&s)),
+            script: std::env::var("CUTLINE_SCRIPT")
+                .ok()
+                .map(|s| devscript::parse(&s)),
         }
     }
 
@@ -299,13 +356,20 @@ impl Overlay {
         let k = self.k();
         let x = ((p.x - self.screen.min.x) * k).floor() as i32;
         let y = ((p.y - self.screen.min.y) * k).floor() as i32;
-        (x.clamp(0, self.frame.width as i32 - 1), y.clamp(0, self.frame.height as i32 - 1))
+        (
+            x.clamp(0, self.frame.width as i32 - 1),
+            y.clamp(0, self.frame.height as i32 - 1),
+        )
     }
 
     fn rgb_at(&self, p: Pos2) -> [u8; 3] {
         let (x, y) = self.pixel_at(p);
         let i = ((y as usize) * self.frame.width as usize + x as usize) * 4;
-        [self.frame.rgba[i], self.frame.rgba[i + 1], self.frame.rgba[i + 2]]
+        [
+            self.frame.rgba[i],
+            self.frame.rgba[i + 1],
+            self.frame.rgba[i + 2],
+        ]
     }
 
     fn window_at(&self, p: Pos2) -> Option<Rect> {
@@ -344,11 +408,18 @@ impl Overlay {
         const BH: f32 = 32.0;
         const SW: f32 = 9.0;
         let items = Self::bar_items();
-        let total: f32 = items.iter().map(|b| if *b == Btn::Sep { SW } else { BW }).sum::<f32>() + BAR_PAD * 2.0;
+        let total: f32 = items
+            .iter()
+            .map(|b| if *b == Btn::Sep { SW } else { BW })
+            .sum::<f32>()
+            + BAR_PAD * 2.0;
         let h = BH + BAR_PAD * 2.0;
         // Room the options row needs on the far side of the bar.
         let sub = SUB_GAP + Self::SUB_CELL + BAR_PAD * 2.0 + 4.0;
-        let x = (sel.max.x - total).clamp(self.screen.min.x + 4.0, (self.screen.max.x - total - 4.0).max(self.screen.min.x));
+        let x = (sel.max.x - total).clamp(
+            self.screen.min.x + 4.0,
+            (self.screen.max.x - total - 4.0).max(self.screen.min.x),
+        );
         let below = sel.max.y + 8.0 + h + sub <= self.screen.max.y;
         let y = if below {
             sel.max.y + 8.0
@@ -403,10 +474,22 @@ impl Overlay {
         }
         const C: f32 = Overlay::SUB_CELL;
         const S: f32 = 11.0;
-        let total: f32 = items.iter().map(|s| if *s == Sub::Sep { S } else { C }).sum::<f32>() + BAR_PAD * 2.0;
+        let total: f32 = items
+            .iter()
+            .map(|s| if *s == Sub::Sep { S } else { C })
+            .sum::<f32>()
+            + BAR_PAD * 2.0;
         let h = C + BAR_PAD * 2.0;
-        let x = bar.min.x.min(self.screen.max.x - total - 4.0).max(self.screen.min.x + 4.0);
-        let y = if below { bar.max.y + SUB_GAP } else { bar.min.y - SUB_GAP - h };
+        let x = bar
+            .min
+            .x
+            .min(self.screen.max.x - total - 4.0)
+            .max(self.screen.min.x + 4.0);
+        let y = if below {
+            bar.max.y + SUB_GAP
+        } else {
+            bar.min.y - SUB_GAP - h
+        };
         let rect = Rect::from_min_size(pos2(x, y), vec2(total, h));
         let mut cx = x + BAR_PAD;
         let mut out = Vec::new();
@@ -443,7 +526,10 @@ impl Overlay {
     /// Grab zone for resizing the text box: a strip over its right edge and the handle on it.
     fn text_handle(&self) -> Rect {
         let r = self.edit_rect;
-        Rect::from_min_max(pos2(r.max.x + 1.0, r.min.y - 4.0), pos2(r.max.x + 11.0, r.max.y + 4.0))
+        Rect::from_min_max(
+            pos2(r.max.x + 1.0, r.min.y - 4.0),
+            pos2(r.max.x + 11.0, r.max.y + 4.0),
+        )
     }
 
     /// Grab zone for moving the text box: a band over the rest of its frame.
@@ -467,10 +553,19 @@ impl Overlay {
             if !text.is_empty() {
                 let max_w = self.text_max_w(e.pos);
                 let wrap = e.width.map_or(max_w, |w| w.min(max_w));
-                let galley = ctx.layer_painter(LayerId::background()).layout_job(text_job(text, e.size, e.c, wrap));
+                let galley = ctx
+                    .layer_painter(LayerId::background())
+                    .layout_job(text_job(text, e.size, e.c, wrap));
                 let bounds = Rect::from_min_size(e.pos, galley.size());
                 self.push_history();
-                self.shapes.push(Annot::Text { pos: e.pos, text: text.to_owned(), c: e.c, size: e.size, wrap, bounds });
+                self.shapes.push(Annot::Text {
+                    pos: e.pos,
+                    text: text.to_owned(),
+                    c: e.c,
+                    size: e.size,
+                    wrap,
+                    bounds,
+                });
             }
         }
     }
@@ -536,20 +631,36 @@ impl Overlay {
                 self.drag = Drag::Draw { start: p };
             }
             Tool::Arrow => {
-                self.cur = Some(Annot::Line { a: p, b: p, c, w: WIDTHS[self.width_idx], arrow: !self.arrow_line });
+                self.cur = Some(Annot::Line {
+                    a: p,
+                    b: p,
+                    c,
+                    w: WIDTHS[self.width_idx],
+                    arrow: !self.arrow_line,
+                });
                 self.drag = Drag::Draw { start: p };
             }
             Tool::Pen => {
-                self.cur = Some(Annot::Pen { pts: vec![p], c, w: WIDTHS[self.width_idx] });
+                self.cur = Some(Annot::Pen {
+                    pts: vec![p],
+                    c,
+                    w: WIDTHS[self.width_idx],
+                });
                 self.drag = Drag::Draw { start: p };
             }
             Tool::Highlighter => {
-                self.cur = Some(Annot::Highlight { pts: vec![p], c, w: WIDTHS[self.width_idx] * 4.0 });
+                self.cur = Some(Annot::Highlight {
+                    pts: vec![p],
+                    c,
+                    w: WIDTHS[self.width_idx] * 4.0,
+                });
                 self.drag = Drag::Draw { start: p };
             }
             Tool::Mosaic => {
                 self.ensure_mosaic(ctx);
-                self.cur = Some(Annot::Mosaic { r: Rect::from_two_pos(p, p) });
+                self.cur = Some(Annot::Mosaic {
+                    r: Rect::from_two_pos(p, p),
+                });
                 self.drag = Drag::Draw { start: p };
             }
             Tool::Text => {
@@ -558,7 +669,14 @@ impl Overlay {
                 let row = ctx.fonts_mut(|f| f.row_height(&FontId::proportional(size)));
                 let top = self.sel.map_or(self.screen.min.y, |s| s.min.y);
                 let pos = pos2(p.x, (p.y - row * 0.5).round().max(top));
-                self.editing = Some(Editing { pos, text: String::new(), c, size, width: None, fit: 0.0 });
+                self.editing = Some(Editing {
+                    pos,
+                    text: String::new(),
+                    c,
+                    size,
+                    width: None,
+                    fit: 0.0,
+                });
                 self.edit_rect = Rect::from_min_size(pos, vec2(TEXT_MIN_W, row));
                 self.drag = Drag::None;
             }
@@ -587,7 +705,8 @@ impl Overlay {
                 if shift {
                     let d = p - start;
                     let len = d.length();
-                    let ang = (d.y.atan2(d.x) / std::f32::consts::FRAC_PI_4).round() * std::f32::consts::FRAC_PI_4;
+                    let ang = (d.y.atan2(d.x) / std::f32::consts::FRAC_PI_4).round()
+                        * std::f32::consts::FRAC_PI_4;
                     q = start + vec2(ang.cos(), ang.sin()) * len;
                 }
                 *b = q;
@@ -659,12 +778,15 @@ impl Overlay {
             return;
         }
         self.commit_text(ctx);
-        let Some((w, h, rgba)) = self.render_selection() else { return };
+        let Some((w, h, rgba)) = self.render_selection() else {
+            return;
+        };
         match action {
             Action::Copy => {
                 // Scripted dev runs write a file instead of touching the real clipboard.
                 #[cfg(any(debug_assertions, feature = "devscript"))]
-                let scripted = self.script.is_some() && std::env::var_os("CUTLINE_REAL_CLIPBOARD").is_none();
+                let scripted =
+                    self.script.is_some() && std::env::var_os("CUTLINE_REAL_CLIPBOARD").is_none();
                 #[cfg(not(any(debug_assertions, feature = "devscript")))]
                 let scripted = false;
                 if scripted {
@@ -672,7 +794,11 @@ impl Overlay {
                         let _ = im.save(crate::frame::temp_dir().join("export.png"));
                     }
                 } else if let Ok(mut cb) = arboard::Clipboard::new() {
-                    let _ = cb.set_image(arboard::ImageData { width: w as usize, height: h as usize, bytes: rgba.into() });
+                    let _ = cb.set_image(arboard::ImageData {
+                        width: w as usize,
+                        height: h as usize,
+                        bytes: rgba.into(),
+                    });
                 }
                 close_overlay(ctx);
             }
@@ -681,11 +807,16 @@ impl Overlay {
                     // Keep the overlay on screen until the pin window has painted its first frame,
                     // then hide it: the pin takes over at the same spot with no gap.
                     let state = Arc::new(AtomicU8::new(0));
-                    self.export = Some(Export { save_state: state.clone() });
+                    self.export = Some(Export {
+                        save_state: state.clone(),
+                    });
                     let c2 = ctx.clone();
                     std::thread::spawn(move || {
                         if let Some(out) = child.stdout.take() {
-                            let _ = std::io::BufRead::read_line(&mut std::io::BufReader::new(out), &mut String::new());
+                            let _ = std::io::BufRead::read_line(
+                                &mut std::io::BufReader::new(out),
+                                &mut String::new(),
+                            );
                         }
                         state.store(1, Ordering::SeqCst);
                         c2.request_repaint();
@@ -696,7 +827,9 @@ impl Overlay {
             Action::Save => {
                 // The dialog needs the window handle, which only `ui()` has: hand the pixels over.
                 self.save_job = Some((w, h, rgba));
-                self.export = Some(Export { save_state: Arc::new(AtomicU8::new(0)) });
+                self.export = Some(Export {
+                    save_state: Arc::new(AtomicU8::new(0)),
+                });
             }
         }
         ctx.request_repaint();
@@ -704,11 +837,24 @@ impl Overlay {
 
     /// Open the save dialog as a child of the overlay window, so it shows above the (topmost)
     /// overlay without the overlay having to change anything on screen.
-    fn begin_save(&mut self, ctx: &Context, frame: &eframe::Frame, (w, h, rgba): (u32, u32, Vec<u8>)) {
-        let Some(ex) = self.export.as_ref() else { return };
+    fn begin_save(
+        &mut self,
+        ctx: &Context,
+        frame: &eframe::Frame,
+        (w, h, rgba): (u32, u32, Vec<u8>),
+    ) {
+        let Some(ex) = self.export.as_ref() else {
+            return;
+        };
         let state = ex.save_state.clone();
-        let name = format!("Cutline_{}.png", chrono::Local::now().format("%Y%m%d_%H%M%S"));
-        let mut dlg = rfd::FileDialog::new().set_file_name(name).add_filter("PNG image", &["png"]).set_parent(frame);
+        let name = format!(
+            "Cutline_{}.png",
+            chrono::Local::now().format("%Y%m%d_%H%M%S")
+        );
+        let mut dlg = rfd::FileDialog::new()
+            .set_file_name(name)
+            .add_filter("PNG image", &["png"])
+            .set_parent(frame);
         if let Some(home) = std::env::var_os("USERPROFILE") {
             let pics = std::path::PathBuf::from(home).join("Pictures");
             if pics.is_dir() {
@@ -730,7 +876,9 @@ impl Overlay {
 
     /// While the save dialog is open: close on success, resume editing on cancel.
     fn poll_save(&mut self, ctx: &Context) {
-        let Some(ex) = self.export.as_ref() else { return };
+        let Some(ex) = self.export.as_ref() else {
+            return;
+        };
         match ex.save_state.load(Ordering::SeqCst) {
             1 => close_overlay(ctx),
             2 => {
@@ -782,7 +930,9 @@ impl Overlay {
         self.press_sub = None;
         if let Some(origin) = self.editing.as_ref().map(|e| e.pos) {
             if self.text_handle().contains(p) {
-                self.drag = Drag::TextWidth { grab: p.x - self.edit_rect.max.x };
+                self.drag = Drag::TextWidth {
+                    grab: p.x - self.edit_rect.max.x,
+                };
                 return;
             }
             if self.text_move_zone(p) {
@@ -796,7 +946,11 @@ impl Overlay {
             // press; on the options row the text stays open and takes the new size / colour.
             let (on_bar, on_sub) = self.sel.map_or((false, false), |sel| {
                 let (bar, _, below) = self.layout_bar(sel);
-                (bar.contains(p), self.layout_sub(bar, below).is_some_and(|(r, _)| r.contains(p)))
+                (
+                    bar.contains(p),
+                    self.layout_sub(bar, below)
+                        .is_some_and(|(r, _)| r.contains(p)),
+                )
             });
             if !on_sub {
                 self.commit_text(ctx);
@@ -813,9 +967,13 @@ impl Overlay {
                 if let Some((_, b)) = btns.iter().find(|(r, b)| *b != Btn::Sep && r.contains(p)) {
                     self.press_btn = Some(*b);
                 } else if let Some((_, items)) = &sub {
-                    self.press_sub = items.iter().find(|(r, s)| *s != Sub::Sep && r.contains(p)).map(|(_, s)| *s);
+                    self.press_sub = items
+                        .iter()
+                        .find(|(r, s)| *s != Sub::Sep && r.contains(p))
+                        .map(|(_, s)| *s);
                 }
-                let on_bar = bar.contains(p) || sub.as_ref().map(|(r, _)| r.contains(p)).unwrap_or(false);
+                let on_bar =
+                    bar.contains(p) || sub.as_ref().map(|(r, _)| r.contains(p)).unwrap_or(false);
                 if !on_bar {
                     if let Some(h) = Self::handle_at(sel, p) {
                         self.drag = Drag::Resize { h, orig: sel };
@@ -855,7 +1013,9 @@ impl Overlay {
             released: i.pointer.button_released(egui::PointerButton::Primary),
             down: i.pointer.button_down(egui::PointerButton::Primary),
             secondary: i.pointer.button_pressed(egui::PointerButton::Secondary),
-            double: i.pointer.button_double_clicked(egui::PointerButton::Primary),
+            double: i
+                .pointer
+                .button_double_clicked(egui::PointerButton::Primary),
             shift: i.modifiers.shift,
             ctrl: i.modifiers.command,
             esc: i.key_pressed(Key::Escape),
@@ -899,7 +1059,8 @@ impl Overlay {
                     let [r, g, b] = self.rgb_at(p);
                     let hex = format!("#{r:02X}{g:02X}{b:02X}");
                     #[cfg(any(debug_assertions, feature = "devscript"))]
-                    let scripted = self.script.is_some() && std::env::var_os("CUTLINE_REAL_CLIPBOARD").is_none();
+                    let scripted = self.script.is_some()
+                        && std::env::var_os("CUTLINE_REAL_CLIPBOARD").is_none();
                     #[cfg(not(any(debug_assertions, feature = "devscript")))]
                     let scripted = false;
                     if scripted {
@@ -942,13 +1103,22 @@ impl Overlay {
                     self.live = Some(Rect::from_two_pos(*start, p).intersect(self.screen));
                 }
                 Drag::Resize { h, orig } => {
-                    self.sel = Some(Self::resize(*orig, *h, Self::clamp_to(self.screen, p), self.screen));
+                    self.sel = Some(Self::resize(
+                        *orig,
+                        *h,
+                        Self::clamp_to(self.screen, p),
+                        self.screen,
+                    ));
                 }
                 Drag::Move { grab } => {
                     if let Some(sel) = self.sel {
                         let mut min = p - *grab;
-                        min.x = min.x.clamp(self.screen.min.x, self.screen.max.x - sel.width());
-                        min.y = min.y.clamp(self.screen.min.y, self.screen.max.y - sel.height());
+                        min.x = min
+                            .x
+                            .clamp(self.screen.min.x, self.screen.max.x - sel.width());
+                        min.y = min
+                            .y
+                            .clamp(self.screen.min.y, self.screen.max.y - sel.height());
                         let new = Rect::from_min_size(min, sel.size());
                         let d = new.min - sel.min;
                         // Annotations travel with the selection.
@@ -1030,7 +1200,10 @@ impl Overlay {
         if i.double && self.tool.is_none() {
             if let Some(sel) = self.sel {
                 let (bar, _, below) = self.layout_bar(sel);
-                let on_sub = self.layout_sub(bar, below).map(|(r, _)| r.contains(p)).unwrap_or(false);
+                let on_sub = self
+                    .layout_sub(bar, below)
+                    .map(|(r, _)| r.contains(p))
+                    .unwrap_or(false);
                 if sel.contains(p) && !bar.contains(p) && !on_sub {
                     self.start_export(ctx, Action::Copy);
                 }
@@ -1051,7 +1224,10 @@ impl Overlay {
             (_, Some(sel)) => {
                 let (bar, _, below) = self.layout_bar(sel);
                 let on_ui = bar.contains(p)
-                    || self.layout_sub(bar, below).map(|(r, _)| r.contains(p)).unwrap_or(false);
+                    || self
+                        .layout_sub(bar, below)
+                        .map(|(r, _)| r.contains(p))
+                        .unwrap_or(false);
                 if on_ui {
                     CursorIcon::PointingHand
                 } else if let Some(h) = Self::handle_at(sel, p) {
@@ -1092,15 +1268,35 @@ impl Overlay {
         let region = self.live.or(self.sel);
 
         // Dim everything outside the region (or the hovered window while picking).
-        let hover = if region.is_none() { pos.and_then(|q| self.window_at(q)) } else { None };
+        let hover = if region.is_none() {
+            pos.and_then(|q| self.window_at(q))
+        } else {
+            None
+        };
         let bright = region.or(hover);
         match bright {
             Some(r) => {
                 let dim = if region.is_some() { DIM } else { DIM_PICK };
-                p.rect_filled(Rect::from_min_max(screen.min, pos2(screen.max.x, r.min.y)), 0.0, dim);
-                p.rect_filled(Rect::from_min_max(pos2(screen.min.x, r.max.y), screen.max), 0.0, dim);
-                p.rect_filled(Rect::from_min_max(pos2(screen.min.x, r.min.y), pos2(r.min.x, r.max.y)), 0.0, dim);
-                p.rect_filled(Rect::from_min_max(pos2(r.max.x, r.min.y), pos2(screen.max.x, r.max.y)), 0.0, dim);
+                p.rect_filled(
+                    Rect::from_min_max(screen.min, pos2(screen.max.x, r.min.y)),
+                    0.0,
+                    dim,
+                );
+                p.rect_filled(
+                    Rect::from_min_max(pos2(screen.min.x, r.max.y), screen.max),
+                    0.0,
+                    dim,
+                );
+                p.rect_filled(
+                    Rect::from_min_max(pos2(screen.min.x, r.min.y), pos2(r.min.x, r.max.y)),
+                    0.0,
+                    dim,
+                );
+                p.rect_filled(
+                    Rect::from_min_max(pos2(r.max.x, r.min.y), pos2(screen.max.x, r.max.y)),
+                    0.0,
+                    dim,
+                );
             }
             None => {
                 p.rect_filled(screen, 0.0, DIM_PICK);
@@ -1120,11 +1316,19 @@ impl Overlay {
             p.rect_stroke(r, 0.0, Stroke::new(1.5, ACCENT), StrokeKind::Outside);
             // Size label.
             let k = self.k();
-            let label = format!("{} × {}", (r.width() * k).round() as i32, (r.height() * k).round() as i32);
+            let label = format!(
+                "{} × {}",
+                (r.width() * k).round() as i32,
+                (r.height() * k).round() as i32
+            );
             let font = FontId::proportional(12.0);
             let galley = p.layout_no_wrap(label, font, Color32::WHITE);
             let size = galley.size() + vec2(12.0, 6.0);
-            let y = if r.min.y - size.y - 4.0 >= screen.min.y { r.min.y - size.y - 4.0 } else { r.min.y + 4.0 };
+            let y = if r.min.y - size.y - 4.0 >= screen.min.y {
+                r.min.y - size.y - 4.0
+            } else {
+                r.min.y + 4.0
+            };
             let lr = Rect::from_min_size(pos2(r.min.x.max(screen.min.x), y), size);
             p.rect_filled(lr, 4.0, TIP_BG);
             p.galley(lr.min + vec2(6.0, 3.0), galley, Color32::WHITE);
@@ -1138,8 +1342,16 @@ impl Overlay {
                         continue;
                     }
                     let c = pos2(
-                        match hx { -1 => sel.min.x, 0 => sel.center().x, _ => sel.max.x },
-                        match hy { -1 => sel.min.y, 0 => sel.center().y, _ => sel.max.y },
+                        match hx {
+                            -1 => sel.min.x,
+                            0 => sel.center().x,
+                            _ => sel.max.x,
+                        },
+                        match hy {
+                            -1 => sel.min.y,
+                            0 => sel.center().y,
+                            _ => sel.max.y,
+                        },
                     );
                     let hr = Rect::from_center_size(c, vec2(7.0, 7.0));
                     p.rect_filled(hr, 0.0, Color32::WHITE);
@@ -1164,7 +1376,9 @@ impl Overlay {
 
     /// The text being typed: a bare editor with the frame and its width handle drawn around it.
     fn paint_editor(&mut self, ctx: &Context, p: &Painter, max_w: f32) {
-        let Some(e) = self.editing.as_mut() else { return };
+        let Some(e) = self.editing.as_mut() else {
+            return;
+        };
         let (size, color) = (e.size, e.c);
         let wrap = e.width.map_or(max_w, |w| w.min(max_w));
         // Until its edge is dragged the box hugs the text, with room for the next character.
@@ -1209,7 +1423,13 @@ impl Overlay {
         p.rect_stroke(frame, 2.0, Stroke::new(1.0, ACCENT), StrokeKind::Outside);
         // The width handle looks like the selection's handles.
         let held = matches!(self.drag, Drag::TextWidth { .. });
-        let hr = Rect::from_min_size(pos2((frame.max.x - 3.0).round(), (frame.center().y - 3.5).round()), vec2(7.0, 7.0));
+        let hr = Rect::from_min_size(
+            pos2(
+                (frame.max.x - 3.0).round(),
+                (frame.center().y - 3.5).round(),
+            ),
+            vec2(7.0, 7.0),
+        );
         p.rect_filled(hr, 0.0, if held { ACCENT } else { Color32::WHITE });
         p.rect_stroke(hr, 0.0, Stroke::new(1.0, ACCENT), StrokeKind::Inside);
 
@@ -1221,10 +1441,31 @@ impl Overlay {
     /// One toolbar card: soft shadow, white face, hairline edge.
     fn paint_panel(p: &Painter, r: Rect) {
         use egui::epaint::Shadow;
-        p.add(Shadow { offset: [0, 6], blur: 18, spread: 0, color: Color32::from_black_alpha(56) }.as_shape(r, BAR_RADIUS));
-        p.add(Shadow { offset: [0, 1], blur: 4, spread: 0, color: Color32::from_black_alpha(48) }.as_shape(r, BAR_RADIUS));
+        p.add(
+            Shadow {
+                offset: [0, 6],
+                blur: 18,
+                spread: 0,
+                color: Color32::from_black_alpha(56),
+            }
+            .as_shape(r, BAR_RADIUS),
+        );
+        p.add(
+            Shadow {
+                offset: [0, 1],
+                blur: 4,
+                spread: 0,
+                color: Color32::from_black_alpha(48),
+            }
+            .as_shape(r, BAR_RADIUS),
+        );
         p.rect_filled(r, BAR_RADIUS, BAR_BG);
-        p.rect_stroke(r, BAR_RADIUS, Stroke::new(1.0, BAR_EDGE), StrokeKind::Outside);
+        p.rect_stroke(
+            r,
+            BAR_RADIUS,
+            Stroke::new(1.0, BAR_EDGE),
+            StrokeKind::Outside,
+        );
     }
 
     fn paint_bars(&mut self, ctx: &Context, p: &Painter, pos: Option<Pos2>, sel: Rect) {
@@ -1239,7 +1480,10 @@ impl Overlay {
         for (r, b) in &btns {
             if *b == Btn::Sep {
                 let x = r.center().x;
-                p.line_segment([pos2(x, r.min.y + 7.0), pos2(x, r.max.y - 7.0)], Stroke::new(1.0, BAR_SEP));
+                p.line_segment(
+                    [pos2(x, r.min.y + 7.0), pos2(x, r.max.y - 7.0)],
+                    Stroke::new(1.0, BAR_SEP),
+                );
                 continue;
             }
             let active = matches!(b, Btn::Tool(t) if Some(*t) == self.tool);
@@ -1286,7 +1530,13 @@ impl Overlay {
                 let hovered = over(&r);
                 // Background of a chosen / hovered option; returns the colour to draw it in.
                 let cell = |on: bool| {
-                    let bg = if on { BTN_ON } else if hovered { BTN_HOVER } else { BAR_BG };
+                    let bg = if on {
+                        BTN_ON
+                    } else if hovered {
+                        BTN_HOVER
+                    } else {
+                        BAR_BG
+                    };
                     if bg != BAR_BG {
                         p.rect_filled(r.shrink(1.0), 5.0, bg);
                     }
@@ -1294,15 +1544,30 @@ impl Overlay {
                 };
                 match s {
                     Sub::Sep => {
-                        p.line_segment([pos2(c.x, r.min.y + 6.0), pos2(c.x, r.max.y - 6.0)], Stroke::new(1.0, BAR_SEP));
+                        p.line_segment(
+                            [pos2(c.x, r.min.y + 6.0), pos2(c.x, r.max.y - 6.0)],
+                            Stroke::new(1.0, BAR_SEP),
+                        );
                     }
                     Sub::Kind(k) => {
                         let shape = self.tool == Some(Tool::Shape);
-                        let col = cell((k == 1) == if shape { self.shape_ellipse } else { self.arrow_line });
+                        let col = cell(
+                            (k == 1)
+                                == if shape {
+                                    self.shape_ellipse
+                                } else {
+                                    self.arrow_line
+                                },
+                        );
                         let st = Stroke::new(1.6, col);
                         if shape {
                             if k == 0 {
-                                p.rect_stroke(Rect::from_center_size(c, vec2(14.0, 10.0)), 1.5, st, StrokeKind::Middle);
+                                p.rect_stroke(
+                                    Rect::from_center_size(c, vec2(14.0, 10.0)),
+                                    1.5,
+                                    st,
+                                    StrokeKind::Middle,
+                                );
                             } else {
                                 p.add(Shape::ellipse_stroke(c, vec2(7.0, 5.0), st));
                             }
@@ -1316,7 +1581,13 @@ impl Overlay {
                         let text = self.tool == Some(Tool::Text);
                         let col = cell(i == if text { self.size_idx } else { self.width_idx });
                         if text {
-                            p.text(c, Align2::CENTER_CENTER, "A", FontId::proportional([11.0, 15.0, 19.0][i]), col);
+                            p.text(
+                                c,
+                                Align2::CENTER_CENTER,
+                                "A",
+                                FontId::proportional([11.0, 15.0, 19.0][i]),
+                                col,
+                            );
                         } else {
                             p.circle_filled(c, 2.0 + i as f32 * 1.6, col);
                         }
@@ -1348,7 +1619,11 @@ impl Overlay {
             }
             self.tip = b;
             self.tip_muted = false;
-            self.tip_since = if now - self.tip_seen < 0.3 { now - TIP_DELAY } else { now };
+            self.tip_since = if now - self.tip_seen < 0.3 {
+                now - TIP_DELAY
+            } else {
+                now
+            };
         }
         // A press hides the tooltip until the pointer moves on to another button.
         self.tip_muted |= down;
@@ -1367,12 +1642,19 @@ impl Overlay {
         let tp = ctx.layer_painter(LayerId::new(Order::Tooltip, Id::new("cutline_tip")));
         let font = FontId::proportional(12.0);
         let name = tp.layout_no_wrap(label.to_owned(), font.clone(), Color32::WHITE);
-        let keys = (!key.is_empty()).then(|| tp.layout_no_wrap(key.to_owned(), font, Color32::from_gray(165)));
+        let keys = (!key.is_empty())
+            .then(|| tp.layout_no_wrap(key.to_owned(), font, Color32::from_gray(165)));
         let w = name.size().x + keys.as_ref().map_or(0.0, |g| g.size().x + 8.0) + 18.0;
         let h = name.size().y + 10.0;
         let left = self.screen.min.x + 4.0;
-        let x = (r.center().x - w * 0.5).round().clamp(left, (self.screen.max.x - w - 4.0).max(left));
-        let y = if below { panels.max.y + 6.0 } else { panels.min.y - 6.0 - h };
+        let x = (r.center().x - w * 0.5)
+            .round()
+            .clamp(left, (self.screen.max.x - w - 4.0).max(left));
+        let y = if below {
+            panels.max.y + 6.0
+        } else {
+            panels.min.y - 6.0 - h
+        };
         let tr = Rect::from_min_size(pos2(x, y), vec2(w, h));
         tp.rect_filled(tr, 6.0, TIP_BG);
         let at = pos2(tr.min.x + 9.0, tr.min.y + 5.0);
@@ -1406,15 +1688,47 @@ impl Overlay {
         p.rect_filled(img.expand(2.0), 0.0, Color32::BLACK);
         p.image(self.tex.id(), img, uv, Color32::WHITE);
         let cell = Rect::from_center_size(img.center(), vec2(Z, Z));
-        p.rect_stroke(cell, 0.0, Stroke::new(1.0, Color32::WHITE), StrokeKind::Outside);
-        p.rect_stroke(cell.expand(1.0), 0.0, Stroke::new(1.0, Color32::BLACK), StrokeKind::Outside);
+        p.rect_stroke(
+            cell,
+            0.0,
+            Stroke::new(1.0, Color32::WHITE),
+            StrokeKind::Outside,
+        );
+        p.rect_stroke(
+            cell.expand(1.0),
+            0.0,
+            Stroke::new(1.0, Color32::BLACK),
+            StrokeKind::Outside,
+        );
         let info = Rect::from_min_size(pos2(origin.x, origin.y + side), vec2(side, 44.0));
-        p.rect_filled(info.expand2(vec2(2.0, 0.0)), 0.0, Color32::from_black_alpha(215));
+        p.rect_filled(
+            info.expand2(vec2(2.0, 0.0)),
+            0.0,
+            Color32::from_black_alpha(215),
+        );
         let [r, g, b] = self.rgb_at(q);
         let font = FontId::monospace(12.0);
-        p.text(info.min + vec2(6.0, 4.0), Align2::LEFT_TOP, format!("({px}, {py})"), font.clone(), Color32::WHITE);
-        p.text(info.min + vec2(6.0, 18.0), Align2::LEFT_TOP, format!("RGB {r},{g},{b}"), font.clone(), Color32::WHITE);
-        p.text(info.min + vec2(6.0, 31.0), Align2::LEFT_TOP, "C: copy #hex", FontId::proportional(10.0), Color32::from_gray(170));
+        p.text(
+            info.min + vec2(6.0, 4.0),
+            Align2::LEFT_TOP,
+            format!("({px}, {py})"),
+            font.clone(),
+            Color32::WHITE,
+        );
+        p.text(
+            info.min + vec2(6.0, 18.0),
+            Align2::LEFT_TOP,
+            format!("RGB {r},{g},{b}"),
+            font.clone(),
+            Color32::WHITE,
+        );
+        p.text(
+            info.min + vec2(6.0, 31.0),
+            Align2::LEFT_TOP,
+            "C: copy #hex",
+            FontId::proportional(10.0),
+            Color32::from_gray(170),
+        );
     }
 
     // ---- export -----------------------------------------------------------
@@ -1425,8 +1739,14 @@ impl Overlay {
         let (fw, fh) = (self.frame.width as i32, self.frame.height as i32);
         let k = self.frame.width as f32 / self.screen.width().max(1.0);
         let px = |v: f32, o: f32, max: i32| (((v - o) * k).round() as i32).clamp(0, max);
-        let (x0, y0) = (px(sel.min.x, self.screen.min.x, fw), px(sel.min.y, self.screen.min.y, fh));
-        let (x1, y1) = (px(sel.max.x, self.screen.min.x, fw), px(sel.max.y, self.screen.min.y, fh));
+        let (x0, y0) = (
+            px(sel.min.x, self.screen.min.x, fw),
+            px(sel.min.y, self.screen.min.y, fh),
+        );
+        let (x1, y1) = (
+            px(sel.max.x, self.screen.min.x, fw),
+            px(sel.max.y, self.screen.min.y, fh),
+        );
         if x1 <= x0 || y1 <= y0 {
             return None;
         }
@@ -1445,21 +1765,40 @@ impl Overlay {
     }
 
     /// Draw the annotations into `out` (the cropped selection) via a headless egui context.
-    fn burn_annots(&self, out: &mut [u8], w: usize, h: usize, k: f32, offset_px: (f32, f32), sel: Rect) {
+    fn burn_annots(
+        &self,
+        out: &mut [u8],
+        w: usize,
+        h: usize,
+        k: f32,
+        offset_px: (f32, f32),
+        sel: Rect,
+    ) {
         let ctx = Context::default();
         ctx.add_font_provider(self.fonts.clone());
         ctx.set_pixels_per_point(k);
 
-        let has_mosaic = self.shapes.iter().any(|s| matches!(s, Annot::Mosaic { .. }));
-        let mosaic = has_mosaic.then(|| ctx.load_texture("mosaic", self.mosaic_image(), TextureOptions::NEAREST));
+        let has_mosaic = self
+            .shapes
+            .iter()
+            .any(|s| matches!(s, Annot::Mosaic { .. }));
+        let mosaic = has_mosaic
+            .then(|| ctx.load_texture("mosaic", self.mosaic_image(), TextureOptions::NEAREST));
         let mosaic_id = mosaic.as_ref().map(|t| t.id());
 
         let mut texs = raster::Textures::default();
         let mut shapes = Vec::new();
         // Two passes: the first one lets egui load fonts (system CJK fallbacks) on demand.
         for _ in 0..2 {
-            let mut input = egui::RawInput { screen_rect: Some(self.screen), ..Default::default() };
-            input.viewports.entry(egui::ViewportId::ROOT).or_default().native_pixels_per_point = Some(k);
+            let mut input = egui::RawInput {
+                screen_rect: Some(self.screen),
+                ..Default::default()
+            };
+            input
+                .viewports
+                .entry(egui::ViewportId::ROOT)
+                .or_default()
+                .native_pixels_per_point = Some(k);
             let mut full = ctx.run_ui(input, |ui| {
                 let p = ui
                     .ctx()
@@ -1474,12 +1813,24 @@ impl Overlay {
             shapes = std::mem::take(&mut full.shapes);
         }
         let prims = ctx.tessellate(shapes, k);
-        raster::draw(out, w, h, k, (self.screen.min.x, self.screen.min.y), offset_px, &prims, &texs);
+        raster::draw(
+            out,
+            w,
+            h,
+            k,
+            (self.screen.min.x, self.screen.min.y),
+            offset_px,
+            &prims,
+            &texs,
+        );
     }
 
     fn spawn_pin(&self, w: u32, h: u32, rgba: Vec<u8>) -> Option<std::process::Child> {
         let sel = self.sel?;
-        let path = crate::frame::temp_dir().join(format!("pin_{}.png", chrono::Local::now().format("%H%M%S%3f")));
+        let path = crate::frame::temp_dir().join(format!(
+            "pin_{}.png",
+            chrono::Local::now().format("%H%M%S%3f")
+        ));
         let im = image::RgbaImage::from_raw(w, h, rgba)?;
         if im.save(&path).is_err() {
             return None;
@@ -1616,9 +1967,9 @@ fn annot_hit(a: &Annot, p: Pos2, tol: f32) -> bool {
             }
         }
         Annot::Line { a, b, w, .. } => dist_seg(p, *a, *b) <= tol + w * 0.5,
-        Annot::Pen { pts, w, .. } | Annot::Highlight { pts, w, .. } => {
-            pts.windows(2).any(|s| dist_seg(p, s[0], s[1]) <= tol + w * 0.5)
-        }
+        Annot::Pen { pts, w, .. } | Annot::Highlight { pts, w, .. } => pts
+            .windows(2)
+            .any(|s| dist_seg(p, s[0], s[1]) <= tol + w * 0.5),
         Annot::Mosaic { r } => r.contains(p),
         Annot::Text { bounds, .. } => bounds.expand(3.0).contains(p),
     }
@@ -1639,14 +1990,22 @@ fn draw_arrow(p: &Painter, a: Pos2, b: Pos2, c: Color32, w: f32, head: bool) {
     let perp = vec2(-dir.y, dir.x);
     let base = b - dir * hl;
     p.line_segment([a, base + dir * (hl * 0.35)], Stroke::new(w, c));
-    p.add(Shape::convex_polygon(vec![b, base + perp * (hl * 0.42), base - perp * (hl * 0.42)], c, Stroke::NONE));
+    p.add(Shape::convex_polygon(
+        vec![b, base + perp * (hl * 0.42), base - perp * (hl * 0.42)],
+        c,
+        Stroke::NONE,
+    ));
 }
 
 fn paint_annot(p: &Painter, a: &Annot, mosaic: Option<egui::TextureId>, screen: Rect) {
     match a {
         Annot::Rect { r, c, w, ellipse } => {
             if *ellipse {
-                p.add(Shape::ellipse_stroke(r.center(), r.size() * 0.5, Stroke::new(*w, *c)));
+                p.add(Shape::ellipse_stroke(
+                    r.center(),
+                    r.size() * 0.5,
+                    Stroke::new(*w, *c),
+                ));
             } else {
                 p.rect_stroke(*r, 0.0, Stroke::new(*w, *c), StrokeKind::Middle);
             }
@@ -1671,13 +2030,26 @@ fn paint_annot(p: &Painter, a: &Annot, mosaic: Option<egui::TextureId>, screen: 
         Annot::Mosaic { r } => {
             if let Some(id) = mosaic {
                 let uv = Rect::from_min_max(
-                    pos2((r.min.x - screen.min.x) / screen.width(), (r.min.y - screen.min.y) / screen.height()),
-                    pos2((r.max.x - screen.min.x) / screen.width(), (r.max.y - screen.min.y) / screen.height()),
+                    pos2(
+                        (r.min.x - screen.min.x) / screen.width(),
+                        (r.min.y - screen.min.y) / screen.height(),
+                    ),
+                    pos2(
+                        (r.max.x - screen.min.x) / screen.width(),
+                        (r.max.y - screen.min.y) / screen.height(),
+                    ),
                 );
                 p.image(id, *r, uv, Color32::WHITE);
             }
         }
-        Annot::Text { pos, text, c, size, wrap, .. } => {
+        Annot::Text {
+            pos,
+            text,
+            c,
+            size,
+            wrap,
+            ..
+        } => {
             p.galley(*pos, p.layout_job(text_job(text, *size, *c, *wrap)), *c);
         }
     }
@@ -1721,37 +2093,72 @@ fn draw_icon(p: &Painter, b: Btn, c: Pos2, col: Color32, bg: Color32) {
     let st = Stroke::new(1.5, col);
     let o = |x: f32, y: f32| c + vec2(x, y);
     // For the tools held at 45 degrees: `u` runs along the tool from its tip (bottom left), `v` across it.
-    let d = |u: f32, v: f32| c + vec2(-8.5, 8.5) + vec2(0.7071, -0.7071) * u + vec2(0.7071, 0.7071) * v;
+    let d =
+        |u: f32, v: f32| c + vec2(-8.5, 8.5) + vec2(0.7071, -0.7071) * u + vec2(0.7071, 0.7071) * v;
     match b {
         Btn::Tool(Tool::Shape) => {
-            p.rect_stroke(Rect::from_min_max(o(-8.5, -8.5), o(2.5, 2.5)), 2.0, st, StrokeKind::Middle);
+            p.rect_stroke(
+                Rect::from_min_max(o(-8.5, -8.5), o(2.5, 2.5)),
+                2.0,
+                st,
+                StrokeKind::Middle,
+            );
             p.circle_filled(o(3.0, 3.0), 7.5, bg);
             p.circle_stroke(o(3.0, 3.0), 5.5, st);
         }
         Btn::Tool(Tool::Arrow) => {
             p.line_segment([o(-7.0, 7.0), o(3.5, -3.5)], Stroke::new(1.8, col));
-            p.add(Shape::convex_polygon(vec![o(8.0, -8.0), o(5.6, 0.6), o(-0.6, -5.6)], col, Stroke::NONE));
+            p.add(Shape::convex_polygon(
+                vec![o(8.0, -8.0), o(5.6, 0.6), o(-0.6, -5.6)],
+                col,
+                Stroke::NONE,
+            ));
         }
         Btn::Tool(Tool::Pen) => {
             let h = 2.7;
-            p.add(Shape::convex_polygon(vec![d(0.0, 0.0), d(5.0, h), d(5.0, -h)], col, Stroke::NONE));
-            p.add(Shape::closed_line(vec![d(5.0, h), d(22.0, h), d(22.0, -h), d(5.0, -h)], st));
+            p.add(Shape::convex_polygon(
+                vec![d(0.0, 0.0), d(5.0, h), d(5.0, -h)],
+                col,
+                Stroke::NONE,
+            ));
+            p.add(Shape::closed_line(
+                vec![d(5.0, h), d(22.0, h), d(22.0, -h), d(5.0, -h)],
+                st,
+            ));
             p.line_segment([d(18.0, h), d(18.0, -h)], st);
         }
         Btn::Tool(Tool::Highlighter) => {
             let h = 3.5;
             // The ink it leaves, the chisel nib, the neck, the barrel.
-            p.line_segment([o(-9.0, 9.0), o(2.0, 9.0)], Stroke::new(2.5, col.gamma_multiply(0.4)));
-            p.add(Shape::convex_polygon(vec![d(6.0, -2.0), d(6.0, 2.0), d(2.0, 2.0), d(3.8, -2.0)], col, Stroke::NONE));
-            p.add(Shape::convex_polygon(vec![d(9.0, -h), d(9.0, h), d(6.0, 2.0), d(6.0, -2.0)], col, Stroke::NONE));
-            p.add(Shape::closed_line(vec![d(9.0, h), d(21.5, h), d(21.5, -h), d(9.0, -h)], st));
+            p.line_segment(
+                [o(-9.0, 9.0), o(2.0, 9.0)],
+                Stroke::new(2.5, col.gamma_multiply(0.4)),
+            );
+            p.add(Shape::convex_polygon(
+                vec![d(6.0, -2.0), d(6.0, 2.0), d(2.0, 2.0), d(3.8, -2.0)],
+                col,
+                Stroke::NONE,
+            ));
+            p.add(Shape::convex_polygon(
+                vec![d(9.0, -h), d(9.0, h), d(6.0, 2.0), d(6.0, -2.0)],
+                col,
+                Stroke::NONE,
+            ));
+            p.add(Shape::closed_line(
+                vec![d(9.0, h), d(21.5, h), d(21.5, -h), d(9.0, -h)],
+                st,
+            ));
         }
         Btn::Tool(Tool::Mosaic) => {
             for iy in 0..3 {
                 for ix in 0..3 {
                     let a = if (ix + iy) % 2 == 0 { 1.0 } else { 0.3 };
                     let min = o(-8.0 + ix as f32 * 5.5, -8.0 + iy as f32 * 5.5);
-                    p.rect_filled(Rect::from_min_size(min, vec2(5.0, 5.0)), 1.0, col.gamma_multiply(a));
+                    p.rect_filled(
+                        Rect::from_min_size(min, vec2(5.0, 5.0)),
+                        1.0,
+                        col.gamma_multiply(a),
+                    );
                 }
             }
         }
@@ -1766,20 +2173,36 @@ fn draw_icon(p: &Painter, b: Btn, c: Pos2, col: Color32, bg: Color32) {
         Btn::Tool(Tool::Eraser) => {
             let h = 4.0;
             p.line_segment([o(-3.0, 9.0), o(9.0, 9.0)], st);
-            p.add(Shape::convex_polygon(vec![d(4.0, h), d(10.0, h), d(10.0, -h), d(4.0, -h)], col.gamma_multiply(0.3), Stroke::NONE));
-            p.add(Shape::closed_line(vec![d(4.0, h), d(20.0, h), d(20.0, -h), d(4.0, -h)], st));
+            p.add(Shape::convex_polygon(
+                vec![d(4.0, h), d(10.0, h), d(10.0, -h), d(4.0, -h)],
+                col.gamma_multiply(0.3),
+                Stroke::NONE,
+            ));
+            p.add(Shape::closed_line(
+                vec![d(4.0, h), d(20.0, h), d(20.0, -h), d(4.0, -h)],
+                st,
+            ));
             p.line_segment([d(10.0, h), d(10.0, -h)], st);
         }
         Btn::Undo | Btn::Redo => {
             // A U-turn: head on the left for undo, mirrored for redo.
             let f = if b == Btn::Redo { -1.0 } else { 1.0 };
             let m = |x: f32, y: f32| c + vec2(x * f, y);
-            let turn = arc(pos2(2.5, 1.5), 4.5, -std::f32::consts::FRAC_PI_2, std::f32::consts::FRAC_PI_2, 12);
+            let turn = arc(
+                pos2(2.5, 1.5),
+                4.5,
+                -std::f32::consts::FRAC_PI_2,
+                std::f32::consts::FRAC_PI_2,
+                12,
+            );
             let mut pts = vec![m(-7.0, -3.0)];
             pts.extend(turn.into_iter().map(|q| m(q.x, q.y)));
             pts.push(m(-3.0, 6.0));
             p.add(Shape::line(pts, st));
-            p.add(Shape::line(vec![m(-3.0, -7.0), m(-7.0, -3.0), m(-3.0, 1.0)], st));
+            p.add(Shape::line(
+                vec![m(-3.0, -7.0), m(-7.0, -3.0), m(-3.0, 1.0)],
+                st,
+            ));
         }
         Btn::Close => {
             let s = Stroke::new(1.8, col);
@@ -1789,21 +2212,51 @@ fn draw_icon(p: &Painter, b: Btn, c: Pos2, col: Color32, bg: Color32) {
         Btn::Pin => {
             // An upright push pin, tilted so the needle points down and to the left.
             let (sin, cos) = 40f32.to_radians().sin_cos();
-            let t = |x: f32, y: f32| c + vec2(x * cos - y * sin, x * sin + y * cos) + vec2(1.0, -0.5);
-            let body = vec![t(-2.5, -8.5), t(2.5, -8.5), t(2.5, -2.5), t(5.5, 1.0), t(5.5, 2.5), t(-5.5, 2.5), t(-5.5, 1.0), t(-2.5, -2.5)];
+            let t =
+                |x: f32, y: f32| c + vec2(x * cos - y * sin, x * sin + y * cos) + vec2(1.0, -0.5);
+            let body = vec![
+                t(-2.5, -8.5),
+                t(2.5, -8.5),
+                t(2.5, -2.5),
+                t(5.5, 1.0),
+                t(5.5, 2.5),
+                t(-5.5, 2.5),
+                t(-5.5, 1.0),
+                t(-2.5, -2.5),
+            ];
             p.add(Shape::closed_line(body, st));
             p.line_segment([t(-4.0, -8.5), t(4.0, -8.5)], st);
             p.line_segment([t(0.0, 2.5), t(0.0, 9.0)], st);
         }
         Btn::Save => {
             let thin = Stroke::new(1.4, col);
-            p.add(Shape::closed_line(vec![o(-7.5, -7.5), o(4.0, -7.5), o(7.5, -4.0), o(7.5, 7.5), o(-7.5, 7.5)], st));
-            p.add(Shape::line(vec![o(-4.0, -7.5), o(-4.0, -3.0), o(2.5, -3.0), o(2.5, -7.5)], thin));
-            p.add(Shape::line(vec![o(-4.0, 7.5), o(-4.0, 1.5), o(4.0, 1.5), o(4.0, 7.5)], thin));
+            p.add(Shape::closed_line(
+                vec![
+                    o(-7.5, -7.5),
+                    o(4.0, -7.5),
+                    o(7.5, -4.0),
+                    o(7.5, 7.5),
+                    o(-7.5, 7.5),
+                ],
+                st,
+            ));
+            p.add(Shape::line(
+                vec![o(-4.0, -7.5), o(-4.0, -3.0), o(2.5, -3.0), o(2.5, -7.5)],
+                thin,
+            ));
+            p.add(Shape::line(
+                vec![o(-4.0, 7.5), o(-4.0, 1.5), o(4.0, 1.5), o(4.0, 7.5)],
+                thin,
+            ));
         }
         Btn::Copy => {
             let front = Rect::from_min_max(o(-3.0, -3.0), o(8.0, 8.0));
-            p.rect_stroke(Rect::from_min_max(o(-8.0, -8.0), o(3.0, 3.0)), 2.5, st, StrokeKind::Middle);
+            p.rect_stroke(
+                Rect::from_min_max(o(-8.0, -8.0), o(3.0, 3.0)),
+                2.5,
+                st,
+                StrokeKind::Middle,
+            );
             p.rect_filled(front.expand(2.0), 3.5, bg);
             p.rect_stroke(front, 2.5, st, StrokeKind::Middle);
         }

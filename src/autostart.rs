@@ -14,7 +14,11 @@
 use std::path::PathBuf;
 
 /// The tray menu item.
-pub const LABEL: &str = if cfg!(windows) { "Start with Windows" } else { "Start at login" };
+pub const LABEL: &str = if cfg!(windows) {
+    "Start with Windows"
+} else {
+    "Start at login"
+};
 
 /// Whether signing in starts this copy of Cutline.
 pub fn is_enabled() -> bool {
@@ -27,9 +31,11 @@ pub fn set_enabled(on: bool) -> Result<(), String> {
     // An app opened where it was downloaded runs from a temporary copy until it is moved.
     #[cfg(target_os = "macos")]
     if on && exe.to_string_lossy().contains("/AppTranslocation/") {
-        return Err("macOS is running Cutline from a temporary copy. Move Cutline to the Applications \
+        return Err(
+            "macOS is running Cutline from a temporary copy. Move Cutline to the Applications \
                     folder with the Finder, open it from there and try again."
-            .into());
+                .into(),
+        );
     }
     system().set_enabled(&exe, on)
 }
@@ -38,7 +44,11 @@ pub fn set_enabled(on: bool) -> Result<(), String> {
 fn launch_path() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     #[cfg(target_os = "linux")]
-    let exe = appimage_or(exe, std::env::var_os("APPIMAGE"), std::env::var_os("APPDIR"));
+    let exe = appimage_or(
+        exe,
+        std::env::var_os("APPIMAGE"),
+        std::env::var_os("APPDIR"),
+    );
     Some(exe)
 }
 
@@ -47,9 +57,17 @@ fn launch_path() -> Option<PathBuf> {
 /// `$APPDIR`. Everything started from an AppImage inherits both, so they only count while this
 /// executable is inside that mount.
 #[cfg(any(test, target_os = "linux"))]
-fn appimage_or(exe: PathBuf, appimage: Option<std::ffi::OsString>, appdir: Option<std::ffi::OsString>) -> PathBuf {
+fn appimage_or(
+    exe: PathBuf,
+    appimage: Option<std::ffi::OsString>,
+    appdir: Option<std::ffi::OsString>,
+) -> PathBuf {
     match (appimage, appdir) {
-        (Some(image), Some(dir)) if !image.is_empty() && !dir.is_empty() && exe.starts_with(&dir) => image.into(),
+        (Some(image), Some(dir))
+            if !image.is_empty() && !dir.is_empty() && exe.starts_with(&dir) =>
+        {
+            image.into()
+        }
         _ => exe,
     }
 }
@@ -74,9 +92,12 @@ fn system() -> file::EntryFile {
 mod registry {
     use std::path::Path;
     use std::ptr::null_mut;
-    use windows_sys::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND, ERROR_SUCCESS};
+    use windows_sys::Win32::Foundation::{
+        ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND, ERROR_SUCCESS,
+    };
     use windows_sys::Win32::System::Registry::{
-        HKEY_CURRENT_USER, REG_SZ, RRF_RT_REG_BINARY, RRF_RT_REG_SZ, RegDeleteKeyValueW, RegGetValueW, RegSetKeyValueW,
+        HKEY_CURRENT_USER, REG_SZ, RRF_RT_REG_BINARY, RRF_RT_REG_SZ, RegDeleteKeyValueW,
+        RegGetValueW, RegSetKeyValueW,
     };
 
     /// The value's name, in both keys.
@@ -128,7 +149,8 @@ mod registry {
     /// writes 2 for on and 3 for off (some versions 6 and 7), so an odd first byte is off. No value
     /// is on.
     fn switched_off(data: Option<Vec<u8>>) -> bool {
-        data.and_then(|d| d.first().copied()).is_some_and(|flags| flags & 1 == 1)
+        data.and_then(|d| d.first().copied())
+            .is_some_and(|flags| flags & 1 == 1)
     }
 
     fn wide(s: &str) -> Vec<u16> {
@@ -141,7 +163,15 @@ mod registry {
         let mut len = 0u32;
         // First the size, then the data.
         let err = unsafe {
-            RegGetValueW(HKEY_CURRENT_USER, subkey.as_ptr(), name.as_ptr(), kind, null_mut(), null_mut(), &mut len)
+            RegGetValueW(
+                HKEY_CURRENT_USER,
+                subkey.as_ptr(),
+                name.as_ptr(),
+                kind,
+                null_mut(),
+                null_mut(),
+                &mut len,
+            )
         };
         if err != ERROR_SUCCESS {
             return None;
@@ -167,8 +197,11 @@ mod registry {
 
     fn get_string(subkey: &str, name: &str) -> Option<String> {
         let data = get(subkey, name, RRF_RT_REG_SZ)?;
-        let units: Vec<u16> =
-            data.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).take_while(|&u| u != 0).collect();
+        let units: Vec<u16> = data
+            .chunks_exact(2)
+            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .take_while(|&u| u != 0)
+            .collect();
         Some(String::from_utf16_lossy(&units))
     }
 
@@ -184,7 +217,11 @@ mod registry {
                 (data.len() * 2) as u32,
             )
         };
-        if err == ERROR_SUCCESS { Ok(()) } else { Err(failed("write", subkey, name, err)) }
+        if err == ERROR_SUCCESS {
+            Ok(())
+        } else {
+            Err(failed("write", subkey, name, err))
+        }
     }
 
     /// Deleting a value that is not there is fine.
@@ -217,11 +254,18 @@ mod registry {
         impl Scratch {
             fn new(test: &str) -> Self {
                 let root = format!(r"Software\cutline-test-{}-{test}", std::process::id());
-                Scratch { run: format!(r"{root}\Run"), approved: format!(r"{root}\Approved"), root }
+                Scratch {
+                    run: format!(r"{root}\Run"),
+                    approved: format!(r"{root}\Approved"),
+                    root,
+                }
             }
 
             fn keys(&self) -> Keys<'_> {
-                Keys { run: &self.run, approved: &self.approved }
+                Keys {
+                    run: &self.run,
+                    approved: &self.approved,
+                }
             }
         }
 
@@ -257,7 +301,10 @@ mod registry {
             assert!(!keys.is_enabled(exe));
 
             keys.set_enabled(exe, true).unwrap();
-            assert_eq!(get_string(keys.run, NAME).as_deref(), Some(r#""C:\Program Files\Cutline\cutline.exe""#));
+            assert_eq!(
+                get_string(keys.run, NAME).as_deref(),
+                Some(r#""C:\Program Files\Cutline\cutline.exe""#)
+            );
             assert!(keys.is_enabled(exe));
             // It does not start another copy of Cutline.
             assert!(!keys.is_enabled(Path::new(r"D:\Tools\cutline.exe")));
@@ -277,7 +324,10 @@ mod registry {
             keys.set_enabled(exe, true).unwrap();
 
             // What Task Manager writes when Cutline is disabled there: 3, then a FILETIME...
-            set_binary(keys.approved, &[3, 0, 0, 0, 0xe0, 0x2c, 0x1a, 0xd3, 0xaa, 0xe7, 0xd9, 0x01]);
+            set_binary(
+                keys.approved,
+                &[3, 0, 0, 0, 0xe0, 0x2c, 0x1a, 0xd3, 0xaa, 0xe7, 0xd9, 0x01],
+            );
             assert!(!keys.is_enabled(exe));
             // ...and when it is enabled again: 2, then zeros.
             set_binary(keys.approved, &[2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
@@ -294,8 +344,14 @@ mod registry {
         fn command_lines() {
             let exe = Path::new(EXE);
             assert!(starts(r#""C:\Program Files\Cutline\cutline.exe""#, exe));
-            assert!(starts(r#" "c:\program files\cutline\CUTLINE.EXE" --flag"#, exe));
-            assert!(starts(r"C:\Tools\cutline.exe --flag", Path::new(r"C:\Tools\cutline.exe")));
+            assert!(starts(
+                r#" "c:\program files\cutline\CUTLINE.EXE" --flag"#,
+                exe
+            ));
+            assert!(starts(
+                r"C:\Tools\cutline.exe --flag",
+                Path::new(r"C:\Tools\cutline.exe")
+            ));
             assert!(!starts(r#""C:\Program Files\Other\cutline.exe""#, exe));
             assert!(!starts("", exe));
             assert!(!starts(r#""""#, exe));
@@ -330,7 +386,9 @@ mod file {
 
     impl EntryFile {
         pub fn is_enabled(&self, exe: &Path) -> bool {
-            let (Some(path), Some(exe)) = (&self.path, exe.to_str()) else { return false };
+            let (Some(path), Some(exe)) = (&self.path, exe.to_str()) else {
+                return false;
+            };
             std::fs::read_to_string(path).is_ok_and(|text| (self.starts)(&text, exe))
         }
 
@@ -344,11 +402,15 @@ mod file {
                     _ => Ok(()),
                 };
             }
-            let exe = exe.to_str().ok_or("the path of the Cutline executable is not valid UTF-8")?;
+            let exe = exe
+                .to_str()
+                .ok_or("the path of the Cutline executable is not valid UTF-8")?;
             if let Some(dir) = path.parent() {
-                std::fs::create_dir_all(dir).map_err(|e| format!("could not create {}: {e}", dir.display()))?;
+                std::fs::create_dir_all(dir)
+                    .map_err(|e| format!("could not create {}: {e}", dir.display()))?;
             }
-            std::fs::write(path, (self.contents)(exe)).map_err(|e| format!("could not write {}: {e}", path.display()))
+            std::fs::write(path, (self.contents)(exe))
+                .map_err(|e| format!("could not write {}: {e}", path.display()))
         }
     }
 }
@@ -364,7 +426,11 @@ mod xdg {
             .filter(|p| !p.is_empty())
             .map(PathBuf::from)
             .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")));
-        EntryFile { path: config.map(|c| c.join("autostart").join("cutline.desktop")), contents, starts }
+        EntryFile {
+            path: config.map(|c| c.join("autostart").join("cutline.desktop")),
+            contents,
+            starts,
+        }
     }
 
     fn contents(exe: &str) -> String {
@@ -430,9 +496,16 @@ mod launchd {
     const LABEL: &str = "app.cutline.desktop";
 
     pub fn entry() -> EntryFile {
-        let path = std::env::var_os("HOME")
-            .map(|home| PathBuf::from(home).join("Library/LaunchAgents").join(format!("{LABEL}.plist")));
-        EntryFile { path, contents, starts }
+        let path = std::env::var_os("HOME").map(|home| {
+            PathBuf::from(home)
+                .join("Library/LaunchAgents")
+                .join(format!("{LABEL}.plist"))
+        });
+        EntryFile {
+            path,
+            contents,
+            starts,
+        }
     }
 
     fn contents(exe: &str) -> String {
@@ -460,7 +533,9 @@ mod launchd {
     }
 
     fn xml(text: &str) -> String {
-        text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+        text.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
     }
 }
 
@@ -483,19 +558,28 @@ mod tests {
         let mounted = PathBuf::from("/tmp/.mount_CutlinXyz/usr/bin/cutline");
         let image = || Some(OsString::from("/home/me/Apps/Cutline.AppImage"));
         let dir = || Some(OsString::from("/tmp/.mount_CutlinXyz"));
-        assert_eq!(appimage_or(mounted.clone(), image(), dir()), PathBuf::from("/home/me/Apps/Cutline.AppImage"));
+        assert_eq!(
+            appimage_or(mounted.clone(), image(), dir()),
+            PathBuf::from("/home/me/Apps/Cutline.AppImage")
+        );
         // Installed some other way, but started from an AppImage (a launcher, a terminal).
         let installed = PathBuf::from("/usr/bin/cutline");
         assert_eq!(appimage_or(installed.clone(), image(), dir()), installed);
         assert_eq!(appimage_or(installed.clone(), None, None), installed);
-        assert_eq!(appimage_or(mounted.clone(), Some(OsString::new()), dir()), mounted);
+        assert_eq!(
+            appimage_or(mounted.clone(), Some(OsString::new()), dir()),
+            mounted
+        );
     }
 
     #[test]
     fn xdg_entry() {
         let dir = scratch("xdg");
         let path = dir.join("autostart").join("cutline.desktop");
-        let entry = EntryFile { path: Some(path.clone()), ..xdg::entry() };
+        let entry = EntryFile {
+            path: Some(path.clone()),
+            ..xdg::entry()
+        };
         let exe = Path::new("/opt/My Apps/cutline");
         assert!(!entry.is_enabled(exe));
 
@@ -507,7 +591,10 @@ mod tests {
         assert!(!entry.is_enabled(Path::new("/usr/bin/cutline")));
 
         // Switched off by the desktop, then ticked again.
-        let gnome_off = text.replace("X-GNOME-Autostart-enabled=true", "X-GNOME-Autostart-enabled=false");
+        let gnome_off = text.replace(
+            "X-GNOME-Autostart-enabled=true",
+            "X-GNOME-Autostart-enabled=false",
+        );
         std::fs::write(&path, gnome_off).unwrap();
         assert!(!entry.is_enabled(exe));
         std::fs::write(&path, format!("{text}Hidden=true\n")).unwrap();
@@ -526,7 +613,10 @@ mod tests {
         let exe = r#"/opt/a "b" $c `d` \e 100%/cutline"#;
         let entry = xdg::entry();
         let text = (entry.contents)(exe);
-        assert!(text.contains(r#"Exec="/opt/a \\"b\\" \\$c \\`d\\` \\\\e 100%%/cutline""#), "{text}");
+        assert!(
+            text.contains(r#"Exec="/opt/a \\"b\\" \\$c \\`d\\` \\\\e 100%%/cutline""#),
+            "{text}"
+        );
         assert!((entry.starts)(&text, exe));
     }
 
@@ -534,20 +624,28 @@ mod tests {
     fn launch_agent() {
         let dir = scratch("launchd");
         let path = dir.join("LaunchAgents").join("app.cutline.desktop.plist");
-        let entry = EntryFile { path: Some(path.clone()), ..launchd::entry() };
+        let entry = EntryFile {
+            path: Some(path.clone()),
+            ..launchd::entry()
+        };
         let exe = Path::new("/Applications/Cut & Paste/Cutline.app/Contents/MacOS/cutline");
         assert!(!entry.is_enabled(exe));
 
         entry.set_enabled(exe, true).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
-        assert!(text.contains("<key>Label</key>\n\t<string>app.cutline.desktop</string>"), "{text}");
+        assert!(
+            text.contains("<key>Label</key>\n\t<string>app.cutline.desktop</string>"),
+            "{text}"
+        );
         assert!(
             text.contains("<array>\n\t\t<string>/Applications/Cut &amp; Paste/Cutline.app/Contents/MacOS/cutline</string>"),
             "{text}"
         );
         assert!(text.contains("<key>RunAtLoad</key>\n\t<true/>"), "{text}");
         assert!(entry.is_enabled(exe));
-        assert!(!entry.is_enabled(Path::new("/Applications/Cutline.app/Contents/MacOS/cutline")));
+        assert!(!entry.is_enabled(Path::new(
+            "/Applications/Cutline.app/Contents/MacOS/cutline"
+        )));
 
         entry.set_enabled(exe, false).unwrap();
         assert!(!path.exists());

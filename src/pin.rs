@@ -47,7 +47,13 @@ pub fn run(args: &[String]) {
         Box::new(move |cc| {
             let ci = ColorImage::from_rgba_unmultiplied([pw as usize, ph as usize], &rgba);
             let tex = cc.egui_ctx.load_texture("pin", ci, TextureOptions::LINEAR);
-            Ok(Box::new(Pin { tex, rgba, px: (pw, ph), size: vec2(w, h), frames: 0 }))
+            Ok(Box::new(Pin {
+                tex,
+                rgba,
+                px: (pw, ph),
+                size: vec2(w, h),
+                frames: 0,
+            }))
         }),
     );
 }
@@ -61,8 +67,18 @@ impl eframe::App for Pin {
         let ctx = ui.ctx().clone();
         let rect = ctx.content_rect();
         let p = ctx.layer_painter(egui::LayerId::background());
-        p.image(self.tex.id(), rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
-        p.rect_stroke(rect, 0.0, Stroke::new(1.0, Color32::from_rgb(30, 136, 229)), StrokeKind::Inside);
+        p.image(
+            self.tex.id(),
+            rect,
+            Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+            Color32::WHITE,
+        );
+        p.rect_stroke(
+            rect,
+            0.0,
+            Stroke::new(1.0, Color32::from_rgb(30, 136, 229)),
+            StrokeKind::Inside,
+        );
 
         // Tell the overlay that spawned us that the image is on screen, so it can step aside.
         if self.frames == 0 {
@@ -88,7 +104,8 @@ impl eframe::App for Pin {
                 i.events.iter().any(|e| matches!(e, egui::Event::Copy)),
                 i.pointer.button_pressed(egui::PointerButton::Primary),
                 i.pointer.button_pressed(egui::PointerButton::Secondary),
-                i.pointer.button_double_clicked(egui::PointerButton::Primary),
+                i.pointer
+                    .button_double_clicked(egui::PointerButton::Primary),
                 // Sum the raw wheel events of this frame rather than using the smoothed delta:
                 // smoothing spreads one notch over many frames and would compound the zoom
                 // step on every one of them.
