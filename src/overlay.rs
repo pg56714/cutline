@@ -2093,8 +2093,17 @@ fn draw_icon(p: &Painter, b: Btn, c: Pos2, col: Color32, bg: Color32) {
     let st = Stroke::new(1.5, col);
     let o = |x: f32, y: f32| c + vec2(x, y);
     // For the tools held at 45 degrees: `u` runs along the tool from its tip (bottom left), `v` across it.
-    let d =
-        |u: f32, v: f32| c + vec2(-8.5, 8.5) + vec2(0.7071, -0.7071) * u + vec2(0.7071, 0.7071) * v;
+    let d = |u: f32, v: f32| {
+        c + vec2(-8.5, 8.5)
+            + vec2(
+                std::f32::consts::FRAC_1_SQRT_2,
+                -std::f32::consts::FRAC_1_SQRT_2,
+            ) * u
+            + vec2(
+                std::f32::consts::FRAC_1_SQRT_2,
+                std::f32::consts::FRAC_1_SQRT_2,
+            ) * v
+    };
     match b {
         Btn::Tool(Tool::Shape) => {
             p.rect_stroke(
