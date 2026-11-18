@@ -286,13 +286,13 @@ pub fn run(args: &[String]) {
 
 impl Overlay {
     fn new(cc: &eframe::CreationContext<'_>, frame: Frame, win_pos: Pos2, size: Vec2) -> Self {
-        let ci = ColorImage::from_rgba_unmultiplied(
-            [frame.width as usize, frame.height as usize],
-            &frame.rgba,
+        // The real screenshot is uploaded on the first frame: until then egui assumes a 2048 px texture limit
+        // (it learns the GL one with the first frame), which a Retina screenshot exceeds.
+        let tex = cc.egui_ctx.load_texture(
+            "shot",
+            ColorImage::filled([1, 1], Color32::BLACK),
+            TextureOptions::NEAREST,
         );
-        let tex = cc
-            .egui_ctx
-            .load_texture("shot", ci, TextureOptions::NEAREST);
         let screen = Rect::from_min_size(Pos2::ZERO, size);
         let windows = frame
             .windows
@@ -1875,6 +1875,11 @@ impl eframe::App for Overlay {
         self.screen = ctx.content_rect();
         self.screen.max.y += bottom_gap(self.frame.scale);
         if self.frames == 0 {
+            let ci = ColorImage::from_rgba_unmultiplied(
+                [self.frame.width as usize, self.frame.height as usize],
+                &self.frame.rgba,
+            );
+            self.tex = ctx.load_texture("shot", ci, TextureOptions::NEAREST);
             crate::dwm::disable_transitions();
             crate::dwm::own_pixels(frame, crate::dwm::Kind::Overlay);
             ctx.send_viewport_cmd(ViewportCommand::Focus);

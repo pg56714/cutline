@@ -45,8 +45,12 @@ pub fn run(args: &[String]) {
         "Cutline pin",
         options,
         Box::new(move |cc| {
-            let ci = ColorImage::from_rgba_unmultiplied([pw as usize, ph as usize], &rgba);
-            let tex = cc.egui_ctx.load_texture("pin", ci, TextureOptions::LINEAR);
+            // Uploaded on the first frame, when egui knows the real GL texture limit (it assumes 2048 before).
+            let tex = cc.egui_ctx.load_texture(
+                "pin",
+                ColorImage::filled([1, 1], Color32::BLACK),
+                TextureOptions::LINEAR,
+            );
             Ok(Box::new(Pin {
                 tex,
                 rgba,
@@ -65,6 +69,13 @@ impl eframe::App for Pin {
 
     fn ui(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        if self.frames == 0 {
+            let ci = ColorImage::from_rgba_unmultiplied(
+                [self.px.0 as usize, self.px.1 as usize],
+                &self.rgba,
+            );
+            self.tex = ctx.load_texture("pin", ci, TextureOptions::LINEAR);
+        }
         let rect = ctx.content_rect();
         let p = ctx.layer_painter(egui::LayerId::background());
         p.image(
