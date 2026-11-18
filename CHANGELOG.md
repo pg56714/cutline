@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.7.0 (2026-11-18)
+
+### Features
+
+- **macos:** explain the missing Screen Recording permission instead of freezing a black screen ([2cf7115](https://github.com/pg56714/cutline/commit/2cf71159e25d6bf8e20e51af8bb8c0edb76d11ba))
+
+### Fixes
+
+- **macos:** ad-hoc sign the whole app bundle so the Screen Recording permission sticks ([698a7f3](https://github.com/pg56714/cutline/commit/698a7f36011edff1116684b3a0dc58628cd51cc8))
+
+### Other
+
+- update the macOS status in the READMEs now that it has been run ([df4c6d4](https://github.com/pg56714/cutline/commit/df4c6d4df0e3c2c792894f9a8a76b9a9af1e5a5b))
+
 ## v0.6.1 (2026-11-18)
 
 ### Fixes
