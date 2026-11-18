@@ -391,9 +391,48 @@ fn cursor_pos() -> Option<(i32, i32)> {
     }
 }
 
+#[cfg(target_os = "macos")]
+#[link(name = "CoreGraphics", kind = "framework")]
+unsafe extern "C" {
+    fn CGPreflightScreenCaptureAccess() -> bool;
+    fn CGRequestScreenCaptureAccess() -> bool;
+}
+
+/// macOS hands an app without the Screen Recording permission just the wallpaper, with no error, so the
+/// overlay would freeze a black screen. Check first and say what to do instead.
+#[cfg(target_os = "macos")]
+fn screen_recording_allowed() -> bool {
+    if unsafe { CGPreflightScreenCaptureAccess() } {
+        return true;
+    }
+    // Lists Cutline under Screen Recording (and asks, the first time only).
+    unsafe { CGRequestScreenCaptureAccess() };
+    let open = rfd::MessageDialog::new()
+        .set_title("Cutline")
+        .set_level(rfd::MessageLevel::Warning)
+        .set_buttons(rfd::MessageButtons::YesNo)
+        .set_description(
+            "Cutline needs the Screen Recording permission to capture the screen.\n\n\
+             Turn Cutline on under System Settings -> Privacy & Security -> Screen & System Audio \
+             Recording, then quit Cutline and open it again.\n\n\
+             Open System Settings now?",
+        )
+        .show();
+    if open == rfd::MessageDialogResult::Yes {
+        crate::update::open_url(
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
+        );
+    }
+    false
+}
+
 /// Windows and macOS: xcap.
 #[cfg(not(target_os = "linux"))]
 fn grab_raw() -> Option<Raw> {
+    #[cfg(target_os = "macos")]
+    if !screen_recording_allowed() {
+        return None;
+    }
     let (cx, cy) = cursor_pos().unwrap_or((0, 0));
     // Fall back to the first monitor if the cursor position is unavailable.
     let mon = match xcap::Monitor::from_point(cx, cy) {
