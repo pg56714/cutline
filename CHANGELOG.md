@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.6.1 (2026-11-18)
+
+### Fixes
+
+- **macos:** upload the screenshot texture on the first frame so Retina screens no longer crash ([7f30842](https://github.com/pg56714/cutline/commit/7f30842bb4d529ac59019597223b85b20cebb814))
+- **overlay:** use FRAC_1_SQRT_2 instead of the 0.7071 literal that clippy denies ([d045b89](https://github.com/pg56714/cutline/commit/d045b89af5ad0c8d2ee6c5e3b6e72dc5af3bd39c))
+
+### Other
+
+- cargo fmt ([cfad438](https://github.com/pg56714/cutline/commit/cfad43806e0e14c58087546133e6d5bce9d06c78))
+
 ## v0.6.0 (2026-11-17)
 
 ### Features
