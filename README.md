@@ -116,7 +116,7 @@ it, not in `config.txt`:
 - Uninstalling Cutline does not remove the entry, so untick it first. A leftover entry points at a missing
   file and starts nothing.
 - On Windows the registry handling is covered by unit tests, but signing in with it ticked has not been
-  tested yet. The Linux and macOS entries have not been tested.
+  tested yet. The Linux entry has not been tested. On macOS the launch agent file is written and removed correctly (the plist validates), but signing in with it ticked has not been tested.
 
 ## Updates
 
@@ -145,7 +145,7 @@ Clicking it with nothing newer checks right away and says so.
 | Windows 11 | Developed and tested, including a clean Windows 11 VM at 100% and 125% display scaling (hotkey, selection, annotations, save, pin, system clipboard, tray icon). Not yet tested above 125% scaling, with mixed-DPI monitors, or by clicking the tray menu. |
 | Linux, X11 | Built and run on Ubuntu 22.04 and 24.04 (checked under a virtual X server: hotkey, single instance, selection, window snap, annotations, copy). The prebuilt release is made on Ubuntu 24.04 (glibc 2.39), so it needs a system that new; on older ones such as Ubuntu 22.04, build from source (checked to work). The tray icon needs a desktop with a status-notifier / AppIndicator host. Not tested on a real desktop session. |
 | Linux, Wayland | **Not supported yet.** Cutline captures through the X server, which on Wayland would give a black or partial picture, so it shows a message instead. Screen capture on Wayland has to go through the desktop portal, which asks for permission; global hotkeys and always-on-top overlays are also restricted. Use an X11 session. `CUTLINE_FORCE_X11=1` skips the check and captures only X11 windows through XWayland. |
-| macOS | Type-checks (`cargo check --target aarch64-apple-darwin`) but has **never been run**. Needs the Screen Recording permission. |
+| macOS | Built and run on an Apple Silicon Mac with its built-in Retina display (hotkey, selection, annotations, copy, save, pin, tray icon). Needs the Screen Recording permission: without it the capture is a black screen. Not yet tested on Intel Macs, with external or mixed-DPI displays, or from the installed `.dmg` (Gatekeeper and the update swap). |
 
 ## Build
 
