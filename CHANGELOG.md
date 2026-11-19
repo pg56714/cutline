@@ -4,32 +4,32 @@
 
 ### Features
 
-- **macos:** explain the missing Screen Recording permission instead of freezing a black screen ([2cf7115](https://github.com/pg56714/cutline/commit/2cf71159e25d6bf8e20e51af8bb8c0edb76d11ba))
+- **macos:** explain the missing Screen Recording permission instead of freezing a black screen ([be723a3](https://github.com/pg56714/cutline/commit/be723a39477d9f3535151fa740a276ea54b98d6c))
 
 ### Fixes
 
-- **macos:** ad-hoc sign the whole app bundle so the Screen Recording permission sticks ([698a7f3](https://github.com/pg56714/cutline/commit/698a7f36011edff1116684b3a0dc58628cd51cc8))
+- **macos:** ad-hoc sign the whole app bundle so the Screen Recording permission sticks ([5bea626](https://github.com/pg56714/cutline/commit/5bea626802e235ffdf2e52eab1399fd65b6096ea))
 
 ### Other
 
-- update the macOS status in the READMEs now that it has been run ([df4c6d4](https://github.com/pg56714/cutline/commit/df4c6d4df0e3c2c792894f9a8a76b9a9af1e5a5b))
+- update the macOS status in the READMEs now that it has been run ([2a9a631](https://github.com/pg56714/cutline/commit/2a9a631ec7f2420d2cd45911e3a03324d9913429))
 
 ## v0.6.1 (2026-11-18)
 
 ### Fixes
 
-- **macos:** upload the screenshot texture on the first frame so Retina screens no longer crash ([7f30842](https://github.com/pg56714/cutline/commit/7f30842bb4d529ac59019597223b85b20cebb814))
-- **overlay:** use FRAC_1_SQRT_2 instead of the 0.7071 literal that clippy denies ([d045b89](https://github.com/pg56714/cutline/commit/d045b89af5ad0c8d2ee6c5e3b6e72dc5af3bd39c))
+- **macos:** upload the screenshot texture on the first frame so Retina screens no longer crash ([9598962](https://github.com/pg56714/cutline/commit/95989625df6633e04f913f7cbfb32d1453459756))
+- **overlay:** use FRAC_1_SQRT_2 instead of the 0.7071 literal that clippy denies ([cc3ed8a](https://github.com/pg56714/cutline/commit/cc3ed8a608f9cec3771e08f0a20ef762756e7eca))
 
 ### Other
 
-- cargo fmt ([cfad438](https://github.com/pg56714/cutline/commit/cfad43806e0e14c58087546133e6d5bce9d06c78))
+- cargo fmt ([e43fb7d](https://github.com/pg56714/cutline/commit/e43fb7d65fb83c5fa6dce53d2862a1a75c8c4e6b))
 
 ## v0.6.0 (2026-11-17)
 
 ### Features
 
-- **release:** publish SHA256SUMS and build attestations, verify downloads on update ([c9866e2](https://github.com/pg56714/cutline/commit/c9866e27ceb40a74a0f3d70c8edd2552374d742d))
+- **release:** publish SHA256SUMS and build attestations, verify downloads on update ([864cf55](https://github.com/pg56714/cutline/commit/864cf5553df87240cc8e7d87994010efbaf05189))
 
 ## v0.5.0 (2026-11-17)
 
@@ -71,36 +71,36 @@
 
 ### Fixes
 
-- **build:** only call embed-resource on Windows hosts ([95d77ee](https://github.com/pg56714/cutline/commit/95d77ee0753829fb54f28ae9a905cf02122a52e5))
+- **build:** only call embed-resource on Windows hosts ([a65eae7](https://github.com/pg56714/cutline/commit/a65eae7cfadccb49f2f4695f9510b67072f892a0))
 
 ## v0.1.1 (2026-11-11)
 
 ### Fixes
 
-- **overlay:** remove flicker on copy/save/pin, add exe icon, Snipaste-like dimming ([a361fa2](https://github.com/pg56714/cutline/commit/a361fa2ce01d3dee09acd50243cf824321a4c4aa))
+- **overlay:** remove flicker on copy/save/pin, add exe icon, Snipaste-like dimming ([73b5ae5](https://github.com/pg56714/cutline/commit/73b5ae5a1c887d2b2bb87b65dd399ca1c124002e))
 
 ### Other
 
-- **readme:** note the Linux release is built on Ubuntu 24.04 ([6a5a33c](https://github.com/pg56714/cutline/commit/6a5a33cad69c109ca09a7e1e1663eabd89eef639))
-- **release:** build Linux on ubuntu-24.04 ([6546923](https://github.com/pg56714/cutline/commit/6546923fca4a37a26315f6e5104490b6838b3305))
+- **readme:** note the Linux release is built on Ubuntu 24.04 ([275bf76](https://github.com/pg56714/cutline/commit/275bf760e765456ec2f751dfd2bb0da2f1d08917))
+- **release:** build Linux on ubuntu-24.04 ([96cf4c8](https://github.com/pg56714/cutline/commit/96cf4c80bbf7e229f496d7ebe670876d0ea4c172))
 
 ## v0.1.0 (2026-11-10)
 
 ### Features
 
-- **linux:** capture the X11 screen directly and report Wayland clearly ([c8eadcb](https://github.com/pg56714/cutline/commit/c8eadcb3bf11d0b438489746cf2e22f7e1512e74))
-- add cutline screenshot tool ([0f1e1bb](https://github.com/pg56714/cutline/commit/0f1e1bbd17290ab0b466338fc4a6254c32c19def))
+- **linux:** capture the X11 screen directly and report Wayland clearly ([3445f65](https://github.com/pg56714/cutline/commit/3445f65566f730dc91143fb69c94740a2553e5f9))
+- add cutline screenshot tool ([1ebb4a6](https://github.com/pg56714/cutline/commit/1ebb4a6e06e059a82df9fe5c6fd03d0b9b93e12f))
 
 ### Other
 
-- **readme:** update Linux support and runtime requirements ([8fa8447](https://github.com/pg56714/cutline/commit/8fa844795227a1bb727e70bb60723bcd2cee3dec))
-- **release:** build Linux on ubuntu-22.04 with the trimmed dependency list ([fcbc8c9](https://github.com/pg56714/cutline/commit/fcbc8c90e1f7f6588921c154051822547ea7c2d1))
-- **release:** drop the test step to mirror git-tabs ([6f119c0](https://github.com/pg56714/cutline/commit/6f119c00f73f760a1d8a2d6942de5527791e737e))
-- **readme:** add a Traditional Chinese README ([9cfc698](https://github.com/pg56714/cutline/commit/9cfc698935bb3779a262bad4ff4cdd67374bb2e3))
-- drop the compile-check workflow and the test step to mirror git-tabs ([23c3ab4](https://github.com/pg56714/cutline/commit/23c3ab482cab4a289f2acd652e9455ea226f2dbe))
-- compile-check Windows, macOS and Linux on push and pull request ([69c0ad6](https://github.com/pg56714/cutline/commit/69c0ad683c8a34afa7bac909d02fd5629703db3a))
-- **readme:** document platforms, releasing and commit style ([53ff14a](https://github.com/pg56714/cutline/commit/53ff14a2f4208162212be0a1b209b78374e7df11))
-- **release:** manual release workflow with automatic version and changelog ([c41c9cf](https://github.com/pg56714/cutline/commit/c41c9cf30b13923fef629758779371fbc82729b5))
-- **overlay:** record real scaling in script output and allow real clipboard runs ([f259a24](https://github.com/pg56714/cutline/commit/f259a240616dfb8270739014d7c8c8cc28d0bbb6))
-- normalize line endings to LF ([f71409a](https://github.com/pg56714/cutline/commit/f71409a134893788b248a4d16beb0281e439c746))
+- **readme:** update Linux support and runtime requirements ([86004cf](https://github.com/pg56714/cutline/commit/86004cf1d3daf720a4d872cdd3c1c7b3673354d5))
+- **release:** build Linux on ubuntu-22.04 with the trimmed dependency list ([55648bf](https://github.com/pg56714/cutline/commit/55648bf8426ab5b5a9f026807dc58201045baeab))
+- **release:** drop the test step to mirror git-tabs ([10ac6de](https://github.com/pg56714/cutline/commit/10ac6dec6ec63b57aec5033b891e591f788d6c49))
+- **readme:** add a Traditional Chinese README ([91547ec](https://github.com/pg56714/cutline/commit/91547eca84706996d59c95221e0e6e1cb3bd57c5))
+- drop the compile-check workflow and the test step to mirror git-tabs ([85c6dc5](https://github.com/pg56714/cutline/commit/85c6dc5b8bd6832c2d5826a81811672f3779f039))
+- compile-check Windows, macOS and Linux on push and pull request ([ce28bfe](https://github.com/pg56714/cutline/commit/ce28bfe43d6fb70f3a745c45123f713ee75f1a2b))
+- **readme:** document platforms, releasing and commit style ([79f8710](https://github.com/pg56714/cutline/commit/79f8710d764281494aeac3b0b147569bb03de7c4))
+- **release:** manual release workflow with automatic version and changelog ([eb43cbc](https://github.com/pg56714/cutline/commit/eb43cbcc34d132b7e597d98b575c2aef51f91dc6))
+- **overlay:** record real scaling in script output and allow real clipboard runs ([a9bbbdb](https://github.com/pg56714/cutline/commit/a9bbbdb0313aa1fbdfcdd1f113e03fe0f6eaba69))
+- normalize line endings to LF ([5f14b0a](https://github.com/pg56714/cutline/commit/5f14b0acc37a28be8e2e2548dc0d6da9b4658ea7))
 
